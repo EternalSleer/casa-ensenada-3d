@@ -36,9 +36,6 @@ body{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;overflow-x:hidden}
 .ruler b{position:absolute;right:0;width:24px;height:2px;background:#e4572e;box-shadow:0 0 8px rgba(228,87,46,.7);transform:translateY(-1px)}
 .pill{position:fixed;right:max(16px,env(safe-area-inset-right,0px));top:calc(14px + env(safe-area-inset-top,0px));z-index:6;font:500 10px/1 "IBM Plex Mono",monospace;letter-spacing:.16em;border:1px solid var(--ink);border-radius:999px;padding:9px 14px;background:var(--glass);color:var(--ink);cursor:pointer}
 .pill:hover{background:var(--ink);color:var(--paper)}
-.cta{right:calc(max(16px,env(safe-area-inset-right,0px)) + 132px);background:#e4572e;border-color:#e4572e;color:#fff;text-decoration:none}
-.cta:hover{background:var(--ink);border-color:var(--ink)}
-@media (max-width:760px){.cta{right:max(16px,env(safe-area-inset-right,0px));top:calc(56px + env(safe-area-inset-top,0px))}}
 .navb{position:fixed;left:max(16px,env(safe-area-inset-left,0px));bottom:calc(14px + env(safe-area-inset-bottom,0px));z-index:3;font:500 9.5px/1 "IBM Plex Mono",monospace;letter-spacing:.16em;color:var(--mut);background:var(--glass);padding:6px 9px;border-radius:2px}
 .navb b{color:var(--ink);font-weight:500}.navb b::before{content:"● ";color:#e4572e}
 .count{position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(14px + env(safe-area-inset-bottom,0px));z-index:3;font:500 9.5px/1 "IBM Plex Mono",monospace;letter-spacing:.16em;color:var(--mut);background:var(--glass);padding:6px 9px;border-radius:2px}
@@ -88,7 +85,6 @@ body{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;overflow-x:hidden}
 #endpage h2 em{font-style:normal;color:#e4572e}
 #endpage p{font:400 12px/1.6 "IBM Plex Mono",monospace;color:var(--mut)}
 #endpage button{margin-top:14px;font:500 10px/1 "IBM Plex Mono",monospace;letter-spacing:.16em;border:1px solid var(--ink);border-radius:999px;padding:10px 16px;background:none;cursor:pointer;color:var(--ink)}
-#endpage .endcta{display:inline-block;margin:14px 0 0 8px;font:500 10px/1 "IBM Plex Mono",monospace;letter-spacing:.16em;border:1px solid #e4572e;border-radius:999px;padding:10px 16px;background:#e4572e;color:#fff;text-decoration:none;pointer-events:auto}
 @media (max-width:760px){#endpage .pg{flex-direction:column;gap:2vh}#endpage canvas{height:52vh;max-width:86vw}#endpage h2{font-size:30px}}
 
 #err{position:fixed;inset:auto 16px 16px 16px;color:#a00;font-size:12px;z-index:9}
@@ -109,7 +105,6 @@ body{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;overflow-x:hidden}
 <div class="prog"><i id="bar"></i></div>
 <div class="hint" id="hint">DESLIZA PARA ENTRAR ↓</div>
 <button class="pill" id="restart" type="button">↺ REINICIAR</button>
-<a class="pill cta" id="cta" href="#" target="_blank" rel="noopener">AGENDAR VISITA →</a>
 <div class="ruler" id="ruler"><b id="rmark"></b></div>
 <div class="navb"><b>PLANTA BAJA</b> · PLANTA ALTA · TERRAZA</div>
 <div class="count" id="count"></div>
@@ -118,7 +113,7 @@ body{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;overflow-x:hidden}
 <section id="hero"><div class="k">CASA ENSENADA · ENSENADA, B.C. · 2026</div><h1>Toda casa empieza como un <em>plano.</em></h1><p>Casa de tres niveles en un terreno de 12.49 × 19.93 m. Desliza y entra caminando al dibujo.</p></section>
 <div id="tblock"><div><span>PROYECTO</span>CASA ENSENADA</div><div><span>LÁMINA</span>ARQ-01 · PLANTA BAJA</div><div><span>ESCALA</span>1 : 100</div><div><span>NIVELES</span>N.P.T. 0.00 · 2.80 · 5.60</div></div>
 <aside id="ficha" aria-live="polite"><header><span id="fichaK"></span><button id="fichaX" type="button" aria-label="Cerrar">×</button></header><h3 id="fichaT"></h3><dl id="fichaD"></dl><p id="fichaP"></p></aside>
-<div id="endpage"><div class="pg"><canvas id="endplan"></canvas><div class="et"><small>FIN DEL RECORRIDO · PLANTA BAJA</small><h2>Y todo empezó como un <em>plano.</em></h2><p>17 espacios recorridos. Siguiente lámina: planta alta, terraza y azotea.</p><button id="endBtn" type="button">↺ VOLVER A EMPEZAR</button> <a id="endCta" class="endcta" href="#" target="_blank" rel="noopener">AGENDAR VISITA →</a></div><div class="sh"></div></div></div>
+<div id="endpage"><div class="pg"><canvas id="endplan"></canvas><div class="et"><small>FIN DEL RECORRIDO · PLANTA BAJA</small><h2>Y todo empezó como un <em>plano.</em></h2><p>17 espacios recorridos. Siguiente lámina: planta alta, terraza y azotea.</p><button id="endBtn" type="button">↺ VOLVER A EMPEZAR</button></div><div class="sh"></div></div></div>
 
 <div id="scroll"></div>
 <div id="err"></div>
@@ -134,9 +129,6 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
-
-// contacto del botón "Agendar visita": WhatsApp (https://wa.me/52…) o correo (mailto:…)
-const CONTACTO = '';
 
 window.addEventListener('error', e => { document.getElementById('err').textContent = 'Error: ' + e.message; });
 
@@ -1075,7 +1067,7 @@ function counterChair(x, y) {
   [3.1, 3.82, 4.54].forEach(x => { diningChairG(x, 9.25, 0); diningChairG(x, 10.65, PI); });
   diningChairG(2.48, 9.95, PI / 2); diningChairG(5.16, 9.95, -PI / 2);
   // candil de latón tipo sputnik con globos
-  { const l = G(3.82, 9.95), y = 1.9; cy(l, .004, H1 - y, 0, y, 0, mat.brass, 6); cy(l, .06, .015, 0, H1 - .015, 0, mat.brass, 18); sp(l, .05, 0, y, 0, mat.brass, 1, 1, 1, 2);
+  { const l = G(3.82, 9.95), y = 2.1; cy(l, .004, H1 - y, 0, y, 0, mat.brass, 6);   // por encima de la línea de vista cy(l, .06, .015, 0, H1 - .015, 0, mat.brass, 18); sp(l, .05, 0, y, 0, mat.brass, 1, 1, 1, 2);
     for (let k = 0; k < 10; k++) { const a = k * PI / 5 + (k % 2) * .3, el = (k % 2 ? .35 : -.25), L = .45; const tip = [Math.cos(a) * L, y + el * L, Math.sin(a) * L];
       tb(l, [[0, y, 0], tip], .008, mat.brass, 4, 6); sp(l, .07, tip[0] * 1.12, tip[1] + el * .05, tip[2] * 1.12, mat.glow, 1, 1, 1, 3); } }
   // muro de acento negro con arte en blanco y negro, y aparador negro
@@ -1765,13 +1757,13 @@ label('N ↑', 'NORTE', 14.45, -3.6, 1.3, 0, 90);
 const ZONES = [
   { name: 'Patio frontal', desc: 'Jardinera de concreto con agaves y piedra blanca frente al estudio; un olivo en la esquina.',
     rects: [[0, 18.21, 5.82, 19.93, 6]], c: [2.9, 19.07],
-    stops: [[[6.45, 1.7, 19.65], [1.2, .5, 18.7], 72], [[.45, 1.7, 19.65], [5.2, .6, 18.5], 74]] },
+    stops: [[[6.5, 1.6, 19.7], [1.0, .6, 19.2], 66]] },   // franja de 1.72 m: una sola vista; desde el otro extremo el olivo tapa la cámara
   { name: 'Pasillo lateral', desc: 'Andador de piedras de paso entre la barda y la casa, con cipreses, setos y luces bajas; une el frente con el jardín.',
     rects: [[-.3, 3.65, 1.43, 18.21, 9]], c: [.7, 10.9],
     stops: [[[.9, 1.7, 18.0], [.7, .9, 10.5], 70], [[.95, 1.7, 12.6], [.6, .9, 5.5], 70], [[.95, 1.7, 6.0], [4.0, 1.4, 1.2], 70]] },
   { name: 'Andador de acceso', desc: 'Piso de adoquín, luminarias de piso y muro de madera; la puerta principal lleva <em>cerradura inteligente</em> y videoportero.',
     rects: [[5.82, 13.86, 6.93, 19.93]], c: [6.37, 16.9],
-    stops: [[[6.4, 1.7, 19.8], [6.3, 1.2, 13.9], 70], [[6.55, 1.7, 15.4], [6.3, 1.3, 13.86], 74]] },
+    stops: [[[6.6, 1.6, 19.85], [6.2, .85, 14.3], 64], [[6.6, 1.6, 15.6], [6.25, 1.15, 13.9], 70]] },
   { name: 'Vestíbulo', desc: '<em>Panel domótico:</em> luces, clima, persianas y alarma desde la entrada; consola con espejo y acceso al estudio, cochera y medio baño.',
     rects: [[5.82, 11.82, 9.03, 13.86]], c: [7.4, 12.85],
     stops: [[[6.35, 1.7, 13.5], [9.0, 1.1, 12.2], 78], [[8.45, 1.7, 12.0], [6.0, 1.2, 13.7], 78]] },
@@ -1783,13 +1775,13 @@ const ZONES = [
     stops: [[[5.5, 1.75, 16.8], [3.2, .9, 17.8], 80], [[4.4, 1.75, 16.8], [5.5, 1.0, 18.1], 80]] },
   { name: 'Cuarto de servidores · 2.20 m²', desc: '<em>Centro de domótica:</em> rack con switch, servidores, NAS y UPS; tablero de relevadores, hub y pantalla de control de toda la casa; minisplit dedicado.',
     rects: [[1.43, 16.61, 2.97, 18.21]], c: [2.2, 17.4],
-    stops: [[[1.62, 1.8, 16.75], [2.6, 1.0, 18.0], 84], [[2.8, 1.8, 16.75], [1.55, 1.0, 17.6], 84]] },
+    stops: [[[1.9, 1.6, 16.75], [2.55, 1.1, 18.1], 70], [[2.75, 1.6, 16.8], [1.6, 1.05, 17.75], 70]] },
   { name: 'Medio baño · 3.15 m²', desc: 'Baño de visitas: piso hexagonal negro, mueble negro con cuarzo blanco, espejo redondo y arbotantes de latón.',
     rects: [[9.03, 11.82, 10.82, 13.86]], c: [9.9, 12.85],
-    stops: [[[9.2, 1.75, 13.7], [10.5, 1.0, 12.0], 80], [[10.65, 1.75, 11.98], [9.4, .8, 13.7], 80]] },
+    stops: [[[9.25, 1.6, 13.0], [10.55, 1.2, 12.05], 72], [[10.6, 1.6, 12.2], [9.6, 1.0, 13.6], 72]] },
   { name: 'Cochera · 31.40 m²', desc: 'Dos autos, <em>cargador eléctrico</em>, <em>portón eléctrico</em> que abre hacia la calle y puerta directa al vestíbulo.',
     rects: [[6.93, 13.86, 12.6, 19.93, 2.05]], c: [9.7, 16.9],
-    stops: [[[7.2, 2.15, 14.05], [11.0, .4, 19.3], 74], [[12.25, 2.15, 14.05], [8.2, .4, 19.3], 74], [[9.75, 1.75, 21.2], [9.75, 1.0, 15.0], 66]] },
+    stops: [[[12.3, 2.3, 14.1], [9.3, .15, 18.6], 70], [[7.15, 2.3, 14.1], [10.0, .15, 18.6], 70], [[9.43, 1.65, 19.6], [9.43, .4, 14.5], 62]] },
   { name: 'Cuarto de herramientas · 2.69 m²', desc: 'Anaquel con contenedores, tablero perforado con herramienta y banco de trabajo.',
     rects: [[10.82, 11.82, 12.6, 13.86]], c: [11.7, 12.85],
     stops: [[[12.3, 1.75, 13.7], [11.2, .9, 12.0], 82]] },
@@ -1798,7 +1790,7 @@ const ZONES = [
     stops: [[[6.1, 1.7, 11.6], [11.2, 1.5, 9.2], 72], [[7.0, 1.7, 8.6], [11.4, 2.4, 10.6], 72]] },
   { name: 'Comedor para 8', desc: 'Mesa de nogal para ocho con sillas tapizadas gris oscuro, candil de latón con globos, muro de acento negro con arte en blanco y negro y aparador negro.',
     rects: [[1.43, 8.26, 5.82, 11.82]], c: [3.6, 10.0],
-    stops: [[[5.6, 1.7, 11.6], [1.8, .9, 8.7], 72], [[1.75, 1.7, 8.5], [5.2, .9, 11.5], 72]] },
+    stops: [[[5.55, 1.6, 11.55], [2.0, .75, 8.7], 66], [[1.75, 1.6, 8.55], [5.3, .85, 11.4], 66]] },
   { name: 'Sala · doble altura', desc: 'Ventanal de 6 × 5.15 m al jardín con <em>persianas motorizadas</em>; sala en L gris claro, muro de acento negro con TV y candil de vigas con focos Edison a doble altura.',
     rects: [[1.43, 3.65, 7.4, 8.26, 6]], c: [4.4, 5.95],
     stops: [[[7.2, 1.7, 8.1], [2.2, 1.5, 4.2], 70], [[7.25, 1.7, 3.95], [2.0, 1.5, 7.8], 72], [[2.3, 1.7, 7.95], [6.6, 2.8, 3.8], 72]] },
@@ -1943,7 +1935,6 @@ addEventListener('keydown', e => { if (e.key === 'Escape') closeFicha(); });
 $('cardBtn').addEventListener('click', () => { if (cardZ >= 0) openFicha(cardZ); });
 $('restart').addEventListener('click', () => { closeFicha(); if (window.__lenis) window.__lenis.scrollTo(0, { immediate: true }); else scrollTo(0, 0); });
 $('endBtn').addEventListener('click', () => $('restart').click());
-['cta', 'endCta'].forEach(id => { const a = $(id); if (CONTACTO) a.href = CONTACTO; else a.addEventListener('click', e => e.preventDefault()); });
 const ray = new THREE.Raycaster(), mxy = new THREE.Vector2();
 const pickMarker = e => { mxy.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1); ray.setFromCamera(mxy, camera); const hits = ray.intersectObjects(markers.filter(m => m.visible), true); return hits.length ? hits[0].object.userData.zone : -1; };
 addEventListener('click', e => { if (e.target.closest('#ficha,.card,.pill,#endpage button')) return; const k = pickMarker(e); if (k >= 0) openFicha(k); });

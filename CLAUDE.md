@@ -21,7 +21,7 @@ Landing de scroll en un solo `index.html` (sin build): three.js 0.170 (importmap
 3. Mobiliario en `furn` con helpers `G, bx, rb, cy, lt, tb, sp, tr`; al final `bake(furn)` une todo por material y genera contornos de tinta (`inkify`).
 4. `ZONES` (17): `rects`, `c`, `stops [[pos],[tgt],fov]`, `line` (leyenda narrativa), `piso`, `desc` (ficha).
 5. Guion `KEYS`: auto → aerial → street → streetHold → lift → por zona (over, overHold, drop, eye, reveal, hold, move/eye/hold…, lift) → final → curl (hoja que se dobla).
-6. HUD: regla, contador, ficha del espacio, retícula, marcadores clicables (`openFicha`), portada y hoja final con el plano 2D (`PLAN2D`). Botón "Agendar visita" (`#cta`, `#endCta`) que apunta a la constante `CONTACTO` al inicio del módulo.
+6. HUD: regla, contador, ficha del espacio, retícula, marcadores clicables (`openFicha`), portada y hoja final con el plano 2D (`PLAN2D`). Sin botón de contacto: el proyecto no lleva "Agendar visita".
 
 ## Pruebas
 `npm i three@0.170.0 gsap@3.12.5 lenis@1.1.13`, generar `test.html` cambiando CDN por `node_modules`, servir y forzar `window.__forceP` (0–1) o `window.__cam = {pos, tgt, fov}` desde Playwright.
