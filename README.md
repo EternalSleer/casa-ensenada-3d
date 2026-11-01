@@ -4,6 +4,7 @@ Landing de scroll que convierte el plano arquitectónico de la casa (ARQ-01 a AR
 
 - `index.html` — la página completa (three.js 0.170 + GSAP ScrollTrigger + Lenis desde CDN, sin build).
 - `geometria.json` — lectura del plano: ejes, niveles, espacios, puertas y decisiones confirmadas.
+- `tex/` — texturas escaneadas (1k) y cielo HDRI de [Poly Haven](https://polyhaven.com), licencia CC0: `laminate_floor_02`, `concrete_floor_02`, `square_concrete_pavers`, `white_plaster_rough_02`, `rough_linen`, `leafy_grass`, `gravelly_sand`, `asphalt_02`, `oak_veneer_01`, `wood_table_001`, `brown_planks_05` y `kloofendal_48d_partly_cloudy_puresky`.
 
 ## Ver en local
 
