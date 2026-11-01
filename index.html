@@ -159,7 +159,7 @@ renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.0;
+renderer.toneMappingExposure = 1.12;
 
 const scene = new THREE.Scene();
 const PAPER = new THREE.Color('#f3f0ea'), SKY = new THREE.Color('#cfe3f3');
@@ -176,7 +176,7 @@ const SKY_ROT = (35 - SUN_AZ) * Math.PI / 180;
 scene.environmentRotation.y = SKY_ROT;
 new RGBELoader().load('tex/sky.hdr', t => {
   t.mapping = THREE.EquirectangularReflectionMapping;
-  scene.environment = pmrem.fromEquirectangular(t).texture; scene.environmentIntensity = 0.42; t.dispose();
+  scene.environment = pmrem.fromEquirectangular(t).texture; scene.environmentIntensity = 0.55; t.dispose();
 });
 
 const camera = new THREE.PerspectiveCamera(2.4, innerWidth / innerHeight, 0.08, 3000);
@@ -294,7 +294,6 @@ const texTile = ctex(512, 1024, (g, w, h) => {
 const texGrass = ctex(256, 256, (g, w, h) => { speckle(g, w, h, '#5e9a3e', 9000, .12); }, [1 / 2.5, 1 / 2.5]);
 const texConc = ctex(256, 256, (g, w, h) => { speckle(g, w, h, '#b8b4ad', 6000, .08); }, [1 / 3, 1 / 3]);
 const texPaver = ctex(256, 256, (g, w, h) => { speckle(g, w, h, '#cdc6ba', 3000, .07); g.strokeStyle = '#a69f93'; g.lineWidth = 4; g.strokeRect(0, 0, w, h); }, [1 / 0.9, 1 / 0.6]);
-const texAsph = ctex(256, 256, (g, w, h) => { speckle(g, w, h, '#4a4b4d', 8000, .12); }, [1 / 4, 1 / 4]);
 const texWood = ctex(256, 512, (g, w, h) => {
   g.fillStyle = '#8f5f3a'; g.fillRect(0, 0, w, h);
   for (let x = 0; x < w; x += 2) { g.fillStyle = `rgba(40,20,5,${Math.random() * .18})`; g.fillRect(x, 0, 1 + Math.random() * 2, h); }
@@ -314,9 +313,7 @@ const mat = {
   grass: M({ map: texGrass, roughness: 1 }),
   conc: M({ map: texConc, roughness: .9 }),
   paver: M({ map: texPaver, roughness: .85 }),
-  asph: M({ map: texAsph, roughness: .95 }),
-  walk: M({ color: 0xcac5bc, roughness: .9 }),
-  wall: M({ color: 0xece8e1, roughness: .92 }),
+  wall: M({ color: 0xf2eee6, roughness: .92 }),
   fence: M({ map: texConc, color: 0xdedad3, roughness: .95 }),
   woodClad: M({ map: texWood, roughness: .7 }),
   wood: M({ map: texWood, color: 0xd6b48c, roughness: .6 }),
@@ -333,7 +330,7 @@ const mat = {
   leaf: M({ color: 0x55743d, roughness: .9 }),
   leaf2: M({ color: 0x6b8a47, roughness: .9 }),
   bark: M({ color: 0x6b5340, roughness: 1 }),
-  led: M({ color: 0xffffff, emissive: 0xfff1d6, emissiveIntensity: 6 }),
+  led: M({ color: 0xffffff, emissive: 0xfff1d6, emissiveIntensity: 3.6 }),
   ledBlue: M({ color: 0x0d1117, emissive: 0x58a6ff, emissiveIntensity: 5.5 }),
   screen: M({ color: 0x000000, emissive: 0xffffff, emissiveMap: texScreen, emissiveIntensity: 1.4, roughness: .2 }),
   water: M({ color: 0x5fb3c9, roughness: .05, metalness: .1 }),
@@ -443,8 +440,6 @@ function door(grp, x0, x1, hd, t, type, swing) {
 
 /* ---------- planta baja: pisos ---------- */
 floor(rect(-80, -60, 90, 80), mat.paperFloor, -0.02);                               // terreno general
-floor(rect(-80, 22.2, 90, 32), mat.asph, -0.01);                                    // calle
-floor(rect(-80, 19.93, 90, 22.2), mat.walk, -0.005);                                // banqueta
 floor([[0, 0], [9.03, 0], [9.03, 3.65], [1.43, 3.65], [1.43, 18.21], [0, 18.21]], mat.grass, 0.0);
 floor([[1.43, 3.65], [9.03, 3.65], [9.03, 0], [12.49, 0], [12.49, 13.86], [5.79, 13.86], [5.79, 18.21], [1.43, 18.21]], mat.tile, 0.005);
 floor(rect(6.97, 13.86, 12.49, 19.93), mat.conc, 0.004);
@@ -560,7 +555,6 @@ const pedGate = new THREE.Group(); { const p = P(6.85, 19.95); pedGate.position.
 riseGrp.add(pedGate);
 box(.02, .16, .08, 5.72, 20.06, 1.35, mat.dark); cyl(.02, .01, 5.72, 20.1, 1.4, mat.ledBlue, riseGrp, 12).rotation.x = Math.PI / 2;   // videoportero de barda
 
-floor(rect(-80, 32, 90, 34.3), mat.walk, -0.005);                                    // banqueta de enfrente
 
 /* ---------- mobiliario detallado (posiciones tomadas del plano) ---------- */
 let _sd = 1983;
@@ -634,10 +628,18 @@ const texWeave = ctex(128, 128, (g, w, h) => {
   g.fillStyle = '#ececec'; g.fillRect(0, 0, w, h);
   for (let i = 0; i < w; i += 2) { g.fillStyle = `rgba(0,0,0,${rr(.02, .08)})`; g.fillRect(i, 0, 1, h); g.fillStyle = `rgba(255,255,255,${rr(.02, .1)})`; g.fillRect(0, i, w, 1); }
 }, [3, 3]);
-const texRattan = ctex(128, 128, (g, w, h) => {
-  g.fillStyle = '#b48c58'; g.fillRect(0, 0, w, h);
-  for (let i = 0; i < w; i += 8) for (let j = 0; j < h; j += 8) { g.fillStyle = ((i + j) / 8) % 2 ? 'rgba(80,50,20,.35)' : 'rgba(255,230,180,.25)'; g.fillRect(i, j, 8, 8); }
-}, [3, 2]);
+// tejido de canasta: tres hebras por celda, alternando horizontal y vertical, con poco contraste
+const texRattan = ctex(256, 256, (g, w, h) => {
+  g.fillStyle = '#a98352'; g.fillRect(0, 0, w, h);
+  for (let i = 0; i < w; i += 16) for (let j = 0; j < h; j += 16) {
+    const hor = ((i + j) / 16) % 2;
+    for (let k = 0; k < 3; k++) {
+      const o = 1 + k * 5, gr = hor ? g.createLinearGradient(0, j + o, 0, j + o + 4) : g.createLinearGradient(i + o, 0, i + o + 4, 0);
+      gr.addColorStop(0, 'rgba(120,86,48,.9)'); gr.addColorStop(.5, 'rgba(206,170,118,.95)'); gr.addColorStop(1, 'rgba(120,86,48,.9)'); g.fillStyle = gr;
+      if (hor) g.fillRect(i, j + o, 16, 4); else g.fillRect(i + o, j, 4, 16);
+    }
+  }
+}, [2, 1.5]);
 const texDeck = ctex(512, 512, (g, w, h) => {
   for (let i = 0; i < 8; i++) { const b = rr(120, 150); g.fillStyle = `rgb(${b + 30},${b},${b - 30})`; g.fillRect(0, i * 64, w, 64);
     for (let k = 0; k < 30; k++) { g.fillStyle = `rgba(70,45,20,${rnd() * .2})`; g.fillRect(0, i * 64 + rnd() * 64, w, 1); }
@@ -699,7 +701,7 @@ Object.assign(mat, {
   terracotta: M({ color: 0xb06a46, roughness: .9 }),
   concPot: M({ map: texConc, color: 0xd6d1c8, roughness: .9 }),
   soil: M({ color: 0x3b2e23, roughness: 1 }),
-  pebble: M({ color: 0xe8e4dc, roughness: .7 }),
+  pebble: M({ color: 0xd9d4ca, roughness: .8 }),
   agave: M({ color: 0x86a596, roughness: .55 }),
   grassTuft: M({ color: 0xa3a56a, roughness: .9 }),
   palmLeaf: M({ color: 0x5c8441, roughness: .8, side: DS }),
@@ -729,7 +731,12 @@ const bookMats = [0x7b2d26, 0x1f3a5a, 0x2f4a3a, 0xc9b48a, 0x5a4636, 0x8e8a80, 0x
 const furn = new THREE.Group(); riseGrp.add(furn);
 function G(x, y, ry = 0, yb = 0, parent = furn) { const g = new THREE.Group(), p = P(x, y); g.position.set(p.x, yb, p.z); g.rotation.y = ry; parent.add(g); return g; }
 const _m = (g, geo, m, x, y, z) => { const me = new THREE.Mesh(geo, m); me.position.set(x, y, z); me.castShadow = me.receiveShadow = true; g.add(me); return me; };
-function bx(g, w, h, d, x, y, z, m) { return _m(g, new THREE.BoxGeometry(w, h, d), m, x, y + h / 2, z); }
+function bx(g, w, h, d, x, y, z, m) {
+  const t = Math.min(w, h, d);
+  if (t < .025 || Math.max(w, h, d) < .08) return _m(g, new THREE.BoxGeometry(w, h, d), m, x, y + h / 2, z);
+  // canto biselado: atrapa la luz en las aristas y quita el aspecto de caja; el contorno de tinta sigue siendo el de la caja
+  const me = _m(g, new RoundedBoxGeometry(w, h, d, 1, Math.min(.012, t * .25)), m, x, y + h / 2, z); me.userData.edge = new THREE.BoxGeometry(w, h, d); return me;
+}
 function rb(g, w, h, d, x, y, z, m, r = .03, s = 3) {
   r = Math.max(.002, Math.min(r, w / 2 - .002, h / 2 - .002, d / 2 - .002));
   const me = _m(g, new RoundedBoxGeometry(w, h, d, s, r), m, x, y + h / 2, z); me.userData.edge = new THREE.BoxGeometry(w, h, d); return me;
@@ -1237,19 +1244,19 @@ function counterChair(x, y) {
   rb(c, .26, .12, .08, 0, 1.24, -.34, mat.black, .04, 3).rotation.x = -.12; rb(c, .28, .1, .08, 0, .66, -.18, mat.whiteM, .04, 3);
   [-.28, .28].forEach(x => { bx(c, .03, .22, .03, x, .46, -.02, mat.black); rb(c, .08, .03, .26, x, .68, .02, mat.black, .012, 2); });
   // zona de consola: TV, consolas y sofá
-  const T = G(5.48, 15.1, -PI / 2);
+  const T = G(5.48, 14.85, -PI / 2);   // libra 90 cm frente a la puerta del baño
   rb(T, 1.7, .32, .4, 0, .28, 0, mat.oakW, .01, 2); [-.55, 0, .55].forEach(x => bx(T, .54, .28, .01, x, .3, .202, mat.oakW)); bx(T, 1.6, .01, .02, 0, .27, .18, mat.ledPurple);
   rb(T, 1.46, .84, .05, 0, 1.0, -.15, mat.black, .01, 2); bx(T, 1.42, .8, .004, 0, 1.02, -.123, mat.gameScr); bx(T, 1.4, .01, .01, 0, .99, -.18, mat.ledPurple);
   rb(T, .12, .36, .26, -.6, .6, 0, mat.whiteM, .03, 3); bx(T, .03, .34, .27, -.6, .61, 0, mat.black);
   rb(T, .3, .06, .22, .55, .6, .02, mat.black, .01, 2); bx(T, .1, .004, .005, .55, .63, .131, mat.ledBlue);
   [[.15, mat.whiteM], [.3, mat.black]].forEach(([x, m]) => { rb(T, .15, .04, .09, x, .6, .1, m, .02, 3); });
   rb(T, .8, .07, .1, 0, .6, .13, mat.black, .02, 2);
-  sofa(3.65, 15.1, PI / 2, 1.9, { d: .9, m: mat.charcoalF });
-  { const pS = G(3.65, 15.1, PI / 2); pillow(pS, -.6, .5, -.2, mat.feltTeal, .1, .1, .42); pillow(pS, .6, .5, -.2, mat.feltPurple, -.1, -.08, .42); }
-  { const r_ = G(4.6, 15.1); cy(r_, 1.0, .012, 0, .004, 0, mat.linen, 48); cy(r_, .9, .002, 0, .016, 0, mat.linen2, 48); }
-  { const t = G(4.55, 15.1); cy(t, .28, .03, 0, .36, 0, mat.oakW, 32); [0, 2.1, 4.2].forEach(a => cy(t, .015, .36, Math.cos(a) * .2, 0, Math.sin(a) * .2, mat.black, 8)); rb(t, .16, .04, .09, .05, .39, 0, mat.black, .02, 3); }
+  sofa(3.65, 14.85, PI / 2, 1.9, { d: .9, m: mat.charcoalF });
+  { const pS = G(3.65, 14.85, PI / 2); pillow(pS, -.6, .5, -.2, mat.feltTeal, .1, .1, .42); pillow(pS, .6, .5, -.2, mat.feltPurple, -.1, -.08, .42); }
+  { const r_ = G(4.6, 14.85); cy(r_, 1.0, .012, 0, .004, 0, mat.linen, 48); cy(r_, .9, .002, 0, .016, 0, mat.linen2, 48); }
+  { const t = G(4.55, 14.85); cy(t, .28, .03, 0, .36, 0, mat.oakW, 32); [0, 2.1, 4.2].forEach(a => cy(t, .015, .36, Math.cos(a) * .2, 0, Math.sin(a) * .2, mat.black, 8)); rb(t, .16, .04, .09, .05, .39, 0, mat.black, .02, 3); }
   // librero: libros, juegos y figuras
-  const lb = G(1.72, 15.5, PI / 2);
+  const lb = G(1.72, 14.95, PI / 2); lb.scale.x = .74;   // 1.40 m: libra la puerta del cuarto de servidores
   bx(lb, 1.9, 2.3, .02, 0, 0, -.16, mat.oakW); [-0.95, 0, .95].forEach(x => bx(lb, .025, 2.3, .34, x, 0, 0, mat.oakW));
   [0, .45, .9, 1.35, 1.8, 2.27].forEach((h, i) => { bx(lb, 1.92, .025, .34, 0, h, 0, mat.oakW); if (i < 5) { bx(lb, 1.86, .005, .01, 0, h + .44, .15, mat.ledCyan);
     if (i % 2) { books(lb, -.92, -.03, h + .025, .02, .24, .34); for (let k = 0; k < 4; k++) rb(lb, .15, .2, .06, .15 + k * .2, h + .025, .02, [mat.red, mat.navy, mat.yellow, mat.feltTeal][k], .01, 2); }
@@ -1295,7 +1302,7 @@ function counterChair(x, y) {
   [-.2, -.1, 0, .1, .2].forEach((x, k) => tb(R, [[x, 1.69, .31], [x + .03, 1.63, .32], [x * .5, 1.8, .31]], .005, [mat.blue, mat.red, mat.yellow, mat.leaf, mat.blue][k], 8, 4));
   [-.27, .27].forEach(x => cy(R, .025, .05, x, 0, .25, mat.black, 10));
   // tablero de domótica, pantalla de control, hub y router en el muro oeste
-  const W = G(1.55, 17.3, PI / 2);
+  const W = G(1.55, 17.72, PI / 2);
   rb(W, .55, .6, .1, -.15, 1.05, .05, mat.whiteM, .01, 2); bx(W, .48, .5, .005, -.15, 1.1, .101, mat.glassG);
   for (let r = 0; r < 2; r++) for (let k = 0; k < 8; k++) { rb(W, .05, .09, .06, -.33 + k * .052, 1.17 + r * .22, .06, k % 3 ? mat.whiteM : mat.blue, .005, 1); bx(W, .008, .008, .005, -.33 + k * .052, 1.24 + r * .22, .092, k % 4 ? mat.ledCyan : mat.led); }
   rb(W, .4, .26, .02, .38, 1.35, .01, mat.black, .01, 2); bx(W, .37, .23, .004, .38, 1.365, .022, mat.dashScr);
@@ -1336,7 +1343,7 @@ function counterChair(x, y) {
   { const r = G(6.4, 13.5); rb(r, .9, .015, .55, 0, .005, 0, mat.kraft, .01, 1); }
   { const r = G(6.4, 14.25); rb(r, .8, .02, .5, 0, .005, 0, mat.rubber, .01, 1); }
   // gancho de llaves y paraguero
-  lt(G(6.0, 12.1), [[0, 0], [.1, 0], [.11, .45], [.1, .45], [.09, .01], [0, .01]], 0, 0, 0, mat.black, 24);
+  lt(G(8.82, 13.62), [[0, 0], [.1, 0], [.11, .45], [.1, .45], [.09, .01], [0, .01]], 0, 0, 0, mat.black, 24);
   pendant(G(7.4, 12.85), 0, 0, H1, .35, 'cone');
 }
 
@@ -1353,7 +1360,13 @@ function counterChair(x, y) {
   for (let i = 0; i < 8; i++) { const g = G(9.2 + (11.44 - 9.2) / 8 * (i + .5), 11.74); bx(g, .12, .02, .01, 0, (i + 1) * rh + .25, 0, mat.led); }
   for (let j = 0; j < 9; j++) { const g = G(11.44 - (11.44 - 9.2) / 9 * (j + .5), 8.34); bx(g, .12, .02, .01, 0, (9 + j) * rh + .25, 0, mat.led); }
   olive(8.6, 8.65, .95);
-  { const g = G(9.1, 9.0, PI / 2); frameArt(g, .9, 1.2, 0, 1.0, 0, mat.bw1, mat.whiteM); }
+  // bajo el segundo tramo: jardín seco de piedra blanca con agaves y una obra iluminada en el muro del fondo
+  { const g = G(10.2, 9.1);
+    rb(g, 1.95, .12, 1.5, 0, 0, 0, mat.concPot, .02, 2); bx(g, 1.85, .01, 1.4, 0, .115, 0, mat.pebble);
+    for (let k = 0; k < 220; k++) sp(g, rr(.025, .055), rr(-.88, .88), .125, rr(-.65, .65), mat.pebble, 1, .5, 1, 0).userData.noEdge = true;
+    agave(g, -.45, .12, .2, 1.25); agave(g, .25, .12, -.2, .95); agave(g, .65, .12, .35, .75);
+    cy(g, .035, .04, -.5, .12, -.6, mat.glow, 12); }
+  { const g = G(9.72, 8.34); frameArt(g, .7, .9, 0, 1.1, 0, mat.bw1, mat.whiteM); }
   downlight(6.4, 11.4); downlight(6.4, 9.9); downlight(8.0, 9.6);
 }
 
@@ -1456,7 +1469,7 @@ function car(x, y, m, kind = 'sedan') {
   }
   return g;
 }
-car(8.4, 17.45, mat.carA, 'sedan'); car(11.1, 16.95, mat.carB, 'pickup');
+car(8.3, 17.45, mat.carA, 'sedan'); car(10.55, 16.95, mat.carB, 'pickup');   // la pickup libra la puerta de herramientas
 {
   // cargador eléctrico con cable enrollado
   const g = G(12.31, 16.2, -PI / 2);
@@ -1467,13 +1480,7 @@ car(8.4, 17.45, mat.carA, 'sedan'); car(11.1, 16.95, mat.carB, 'pickup');
   rb(g, .05, .14, .08, .2, .95, .08, mat.black, .02, 2);
   // gabinetes de guardado y bicicleta colgada
   const s = G(12.19, 18.9, -PI / 2); rb(s, 1.6, .7, .38, 0, 1.55, 0, mat.white, .01, 2); [-.4, .4].forEach(x => { bx(s, .78, .66, .01, x, 1.57, .19, mat.white); bx(s, .01, .2, .02, x + (x < 0 ? .34 : -.34), 1.7, .2, mat.black); });
-  const b = G(7.15, 14.55, PI / 2);
-  [-.52, .52].forEach(z => { tr(b, .33, .025, 0, 1.4 + z, 0, mat.rubber, 0, 36); tr(b, .3, .006, 0, 1.4 + z, 0, mat.rim, 0, 36); });
-  tb(b, [[0, .88, 0], [0, 1.25, .15], [0, 1.55, .0], [0, 1.92, 0]], .018, mat.red, 12, 6);
-  tb(b, [[0, 1.25, .15], [0, 1.4, .35], [0, 1.6, .38]], .016, mat.red, 8, 6);
-  rb(b, .05, .1, .25, 0, 1.6, .42, mat.black, .02, 2);
-  [[0, .08], [0, -.08]].forEach(([, z]) => cy(b, .012, .2, 0, 1.85, z, mat.black, 6).rotation.x = PI / 2);
-  [[8.4, 14.95], [11.1, 14.15]].forEach(([x, y]) => rb(G(x, y), .5, .1, .15, 0, 0, 0, mat.yellow, .03, 2));
+  [[8.3, 14.95], [10.55, 14.15]].forEach(([x, y]) => rb(G(x, y), .5, .1, .15, 0, 0, 0, mat.yellow, .03, 2));
 }
 
 /* ================== CUARTO DE HERRAMIENTAS ================== */
@@ -1498,7 +1505,7 @@ car(8.4, 17.45, mat.carA, 'sedan'); car(11.1, 16.95, mat.carB, 'pickup');
   rb(p, .42, .2, .22, -.25, .91, .3, mat.red, .02, 2); bx(p, .3, .02, .02, -.25, 1.13, .3, mat.black);
   rb(p, .08, .22, .22, .3, .91, .3, mat.yellow, .02, 2); cy(p, .03, .1, .3, 1.05, .43, mat.black, 12).rotation.x = PI / 2;
   // escalera de tijera recargada
-  const l = G(12.33, 13.2, -PI / 2); [-.2, .2].forEach(x => { const r = bx(l, .04, 1.7, .03, x, 0, 0, mat.steel); r.rotation.x = .08; });
+  const l = G(12.33, 12.3, -PI / 2); [-.2, .2].forEach(x => { const r = bx(l, .04, 1.7, .03, x, 0, 0, mat.steel); r.rotation.x = .08; });
   for (let k = 0; k < 5; k++) bx(l, .4, .025, .08, 0, .3 + k * .3, .04 - k * .024, mat.steel);
   downlight(11.7, 12.85);
 }
@@ -1555,11 +1562,9 @@ for (let y = 3.9; y < 17.9; y += .45) if (![5.2, 8.6, 12.0, 15.4].some(t => Math
 {
   // cerca de listones horizontales de madera sobre la barda del fondo
   { const f = G(4.5, .1); for (let k = 0; k < 13; k++) bx(f, 8.9, .13, .03, 0, .12 + k * .175, .02, mat.walnut); }
-  // terraza de adoquín de la sala a la cocina, bajo pérgola blanca con serie de focos
+  // terraza de adoquín de la sala a la cocina, a cielo abierto
   const d = G(5.27, 2.75); bx(d, 7.45, .03, 1.6, 0, 0, 0, mat.paverL);
-  { const pg = G(4.5, 2.75), top = 2.7; [-2.85, 2.85].forEach(x => rb(pg, .14, top, .14, x, 0, -.72, mat.whiteM, .01, 1)); [-.72, .72].forEach(z => bx(pg, 5.9, .2, .1, 0, top - .2, z, mat.whiteM)); for (let x = -2.8; x <= 2.8; x += .22) bx(pg, .05, .1, 1.7, x, top, 0, mat.whiteM);
-    [-.72, 0, .72].forEach((z, j) => { const pts = []; for (let k = 0; k <= 12; k++) { const t = k / 12, x = -2.8 + t * 5.6; pts.push([x, top - .22 - Math.sin(t * PI) * .28, z]); if (k % 1 === 0 && k > 0 && k < 12) sp(pg, .028, x, top - .27 - Math.sin(t * PI) * .28, z, mat.edison, 1, 1.3, 1, 1); } tb(pg, pts, .003, mat.black, 24, 4); }); }
-  // comedor exterior para seis bajo la pérgola, cerca de la cocina
+  // comedor exterior para seis, cerca de la cocina
   { const g = G(6.25, 2.75); rb(g, 2.0, .05, .9, 0, .72, 0, mat.walnut, .02, 2); [-.85, .85].forEach(x => { bx(g, .06, .72, .7, x, 0, 0, mat.black); });
     [-.6, 0, .6].forEach(x => [-1, 1].forEach(sd => { const c = G(6.25 + x, 2.75 - sd * .72, sd > 0 ? 0 : PI); [[-.2, -.18], [.2, -.18], [-.2, .18], [.2, .18]].forEach(([lx, lz]) => cy(c, .014, .44, lx, 0, lz, mat.black, 8)); rb(c, .46, .05, .44, 0, .44, 0, mat.rattan, .02, 2); const bk = rb(c, .46, .38, .04, 0, .48, -.21, mat.rattan, .02, 2); bk.rotation.x = -.1; }));
     lt(g, [[0, 0], [.1, 0], [.14, .06], [.13, .08], [0, .03]], 0, .77, 0, mat.whiteM, 28); for (let k = 0; k < 3; k++) sp(g, .035, rr(-.04, .04), .83, rr(-.04, .04), mat.yellow, 1, 1, 1, 1); }
@@ -1569,9 +1574,10 @@ for (let y = 3.9; y < 17.9; y += .45) if (![5.2, 8.6, 12.0, 15.4].some(t => Math
   [[2.15, 1.75, .3], [3.55, 1.75, -.3]].forEach(([x, y, r]) => { const c = G(x, y, r); rb(c, .7, .32, .7, 0, .08, 0, mat.walnut, .02, 2); rb(c, .62, .12, .6, 0, .3, .03, mat.linen2, .04, 3); rb(c, .62, .38, .12, 0, .35, -.3, mat.linen2, .04, 3); [-.32, .32].forEach(lx => rb(c, .08, .22, .66, lx, .32, 0, mat.walnut, .02, 2)); });
   { const g = G(2.85, 2.5); rb(g, 1.0, .38, .55, 0, 0, 0, mat.concPot, .02, 2); bx(g, .7, .02, .25, 0, .38, 0, mat.black); for (let k = 0; k < 14; k++) sp(g, .03, rr(-.3, .3), .4, rr(-.1, .1), mat.carGlass, 1, .6, 1, 0); }
   // asador empotrado junto a la puerta de la cocina
-  { const g = G(8.68, 2.05, -PI / 2); rb(g, 1.8, .86, .62, 0, 0, 0, mat.concPot, .01, 2); bx(g, 1.84, .04, .66, 0, .86, 0, mat.quartzW);
+  { const g = G(8.68, 1.88, -PI / 2); g.scale.x = .84;   // 1.51 m: deja 90 cm libres frente a las puertas de cocina y lavado
+    rb(g, 1.8, .86, .62, 0, 0, 0, mat.concPot, .01, 2); bx(g, 1.84, .04, .66, 0, .86, 0, mat.quartzW);
     bx(g, .75, .02, .5, -.2, .9, -.02, mat.steelB); for (let k = 0; k < 9; k++) bx(g, .02, .012, .44, -.52 + k * .08, .92, -.02, mat.black);
-    const lid = rb(g, .75, .22, .5, -.2, .9, -.02, mat.steelB, .05, 3); lid.position.z = -.3; lid.rotation.x = -1.2;
+    rb(g, .75, .22, .5, -.2, .9, -.02, mat.steelB, .05, 3);   // tapa cerrada: abierta atravesaba el muro del lavado
     bx(g, .4, .4, .01, .55, .2, .31, mat.steelB); bx(g, .3, .015, .03, .55, .55, .33, mat.steelB); bx(g, .55, .02, .01, -.2, .7, .312, mat.steelB);
     [-.45, -.3, -.15].forEach(x => cy(g, .02, .02, x, .78, .31, mat.black, 10).rotation.x = PI / 2);
     rb(g, .3, .02, .22, .62, .9, -.05, mat.walnut, .01, 2); cy(g, .04, .18, .4, .9, -.15, mat.black, 12); }
@@ -1626,40 +1632,6 @@ function bake(grp) {
 }
 bake(furn);
 
-/* ---------- colonia: casas vecinas, calle, banquetas y arbolado ---------- */
-const hood = new THREE.Group(); riseGrp.add(hood);
-const stucco = [0xeae3d6, 0xdccbae, 0xcdb89c, 0xe6dccb, 0xc4b39b, 0xd8d3ca, 0xcfae90].map(c => M({ color: c, roughness: .95 }));
-const glassDark = M({ color: 0x26323b, roughness: .12, metalness: .55 });
-// casa vecina: centro (hx, hy) en plano, fachada hacia y mayor (f = 1) o menor (f = -1); front = distancia del centro al alineamiento
-function house(hx, hy, w, d, h, k, f, front) {
-  const g = G(hx, hy, 0, 0, hood), fz = f * (d / 2 + .03), lv = Math.max(1, Math.round(h / 2.9)), n = Math.max(1, Math.floor(w / 3.3));
-  bx(g, w, h, d, 0, 0, 0, stucco[k % stucco.length]);
-  bx(g, w + .1, .32, d + .1, 0, h, 0, mat.whiteM);
-  for (let l = 0; l < lv; l++) for (let i = 0; i < n; i++) {
-    const x = -w / 2 + (i + .5) * w / n;
-    if (l === 0 && i === k % n) { bx(g, 1.05, 2.2, .08, x, 0, fz, mat.walnut); continue; }
-    bx(g, 1.4, 1.3, .08, x, .95 + l * 2.9, fz, glassDark); bx(g, 1.56, .07, .2, x, .9 + l * 2.9, fz, mat.whiteM);
-  }
-  cy(g, .55, 1.05, w * .28 * (k % 2 ? 1 : -1), h + .32, -f * d * .22, mat.black, 18);                  // tinaco
-  if (k % 3 === 0) cy(g, .28, 1.1, -w * .3, h + .32, -f * d * .3, mat.whiteM, 14).rotation.z = PI / 2;   // tanque estacionario
-  if (front) {                                                                                            // barda y portón
-    bx(g, w * .55, 1.9, .16, -w * .2, 0, f * front, stucco[(k + 3) % stucco.length]);
-    bx(g, w * .4, 1.9, .06, w * .28, 0, f * front, k % 2 ? mat.black : mat.walnut);
-  }
-}
-[[-6.35, 12.0, 6.6, 0], [18.9, 12.0, 5.8, 1], [-18.8, 11.5, 3.1, 2], [31.3, 11.8, 6.2, 3], [-31.2, 12, 6.0, 4], [43.8, 11.5, 3.2, 5], [-43.7, 11.8, 6.4, 6], [56.3, 12, 5.9, 2], [-56.2, 11.6, 3.0, 3], [68.8, 11.8, 6.1, 4]]
-  .forEach(([x, w, h, k], i) => i < 2 ? house(x, 9.96, w, 19.9, h, k, 1, 0) : house(x, 8.2, w, 15.6, h, k, 1, 11.72));
-[-56.2, -43.7, -31.2, -18.8, -6.3, 6.25, 18.8, 31.3, 43.8, 56.3, 68.8].forEach((x, i) => house(x, 43.4, 11.6, 15, [6.3, 3.1, 5.9, 6.6, 3.2, 6.0, 5.8, 3.0, 6.4, 6.2, 3.1][i], i + 2, -1, 9.1));
-[-43.7, -31.2, -18.8, -6.3, 6.25, 18.8, 31.3, 43.8].forEach((x, i) => house(x, -11.5, 11.6, 14, [3.0, 6.1, 5.8, 3.2, 6.4, 6.0, 3.1, 5.9][i], i + 5, -1, 0));
-// calle: guarniciones y línea central
-[[22.2, 1], [32, -1]].forEach(([y, s]) => bx(G(5, y + s * .08, 0, 0, hood), 170, .15, .16, 0, -.01, 0, mat.concPot));
-for (let x = -78; x < 88; x += 6) bx(G(x, 27.1, 0, 0, hood), 3, .012, .12, 0, -.005, 0, mat.whiteM);
-// arbolado: palmas en la banqueta de enfrente y fresnos en la nuestra
-const toHood = t => { t.parent.remove(t); hood.add(t); };
-[-34, -20, -8, 4, 16, 28, 40].forEach(x => toHood(palm(x, 33.4, rr(1.05, 1.35))));
-[-26, -14, 24, 36].forEach(x => toHood(tree(x, 21.1, rr(1.15, 1.35))));
-bake(hood);
-
 texStoneWall.repeat.set(1.5, 2.1);
 // pantalla domótica, videoportero, arbotantes y luces lineales de cochera
 box(.015, .26, .17, 5.905, 13.3, 1.3, mat.screen);
@@ -1670,31 +1642,50 @@ box(.02, .16, .07, 5.9, 14.25, 1.32, mat.dark); cyl(.018, .008, 5.912, 14.25, 1.
 
 /* ---------- texturas escaneadas (Poly Haven, CC0) ---------- */
 const TL = new THREE.TextureLoader();
-function ptex(name, rep = 1, srgb = true) {
-  const t = TL.load(`tex/${name}.jpg`), [rx, ry] = Array.isArray(rep) ? rep : [rep, rep];
+// suaviza la foto: la mezcla hacia su color promedio para bajar el contraste (soft 0 = sin cambio, 1 = color liso)
+function soften(t, soft, gray) {
+  const img = t.image, c = document.createElement('canvas'), s = document.createElement('canvas');
+  c.width = img.width; c.height = img.height; s.width = s.height = 16;
+  const g = c.getContext('2d'), gs = s.getContext('2d', { willReadFrequently: true });
+  if (gray) g.filter = gs.filter = 'grayscale(1)';   // sin color propio: el tono lo da el material
+  gs.drawImage(img, 0, 0, 16, 16); const px = gs.getImageData(0, 0, 16, 16).data, avg = [0, 0, 0];
+  for (let i = 0; i < px.length; i += 4) for (let k = 0; k < 3; k++) avg[k] += px[i + k] / 256;
+  g.drawImage(img, 0, 0); g.filter = 'none'; g.fillStyle = `rgba(${avg.map(Math.round).join(',')},${soft})`; g.fillRect(0, 0, c.width, c.height);
+  t.image = c; t.needsUpdate = true;
+}
+function ptex(name, rep = 1, srgb = true, soft = 0, gray = false) {
+  const t = TL.load(`tex/${name}.jpg`, soft || gray ? tt => soften(tt, soft, gray) : undefined), [rx, ry] = Array.isArray(rep) ? rep : [rep, rep];
   t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; t.repeat.set(rx, ry); if (srgb) t.colorSpace = THREE.SRGBColorSpace; return t;
 }
 function scan(m, diff, nor, rep, o = {}) {
-  if (diff) m.map = ptex(diff, rep);
+  if (diff) m.map = ptex(diff, rep, true, o.soft ?? 0, o.gray);
   if (nor) { m.normalMap = ptex(nor, rep, false); m.normalScale.setScalar(o.ns ?? 1); }
   if (o.color !== undefined) m.color.setHex(o.color);
   if (o.rough !== undefined) m.roughness = o.rough;
   m.needsUpdate = true;
 }
-scan(mat.tile, 'laminate_floor_02_diff', 'laminate_floor_02_nor', .5, { color: 0xffffff, rough: .42 });
-scan(mat.conc, 'concrete_floor_02_diff', 'concrete_floor_02_nor', 1 / 3, { color: 0xe6e2da, rough: .7 });
-scan(mat.walk, 'concrete_floor_02_diff', null, 1 / 3, { color: 0xf4f0e8 });
-scan(mat.paver, 'square_concrete_pavers_diff', 'square_concrete_pavers_nor', .5, { color: 0xffffff });
-scan(mat.paverL, 'square_concrete_pavers_diff', 'square_concrete_pavers_nor', [3.7, .8], { color: 0xffffff });
-scan(mat.grass, 'leafy_grass_diff', null, .4); mat.grass.color.setRGB(1.25, 1.75, .8);   // la textura escaneada es oscura: se aviva hacia pasto de jardín
-scan(mat.asph, 'asphalt_02_diff', null, 1 / 4, { color: 0xbdbdbd });
-scan(mat.paperFloor, 'gravelly_sand_diff', null, 1 / 5, { color: 0xf4ece0 });
-scan(mat.wall, null, 'white_plaster_rough_02_nor', .5, { ns: .45 });
-scan(mat.fence, null, 'white_plaster_rough_02_nor', .5, { ns: .6 });
-scan(mat.woodClad, 'brown_planks_05_diff', null, .5, { color: 0xffffff });
-scan(mat.walnut, 'wood_table_001_diff', null, 1, { color: 0xffffff });
-scan(mat.oakW, 'oak_veneer_01_diff', null, 1, { color: 0xffffff });
-['linen', 'linen2', 'velvet', 'rust', 'navy', 'sofaGrey', 'charcoalF', 'cognac', 'felt', 'feltTeal', 'feltPurple'].forEach(k => mat[k] && scan(mat[k], null, 'rough_linen_nor', 2, { ns: .8 }));
+scan(mat.tile, 'laminate_floor_02_diff', 'laminate_floor_02_nor', .5, { color: 0xffffff, rough: .42, soft: .3, ns: .5 });
+scan(mat.paver, 'square_concrete_pavers_diff', 'square_concrete_pavers_nor', .5, { color: 0xffffff, soft: .45, ns: .4 });
+scan(mat.paverL, 'square_concrete_pavers_diff', 'square_concrete_pavers_nor', [3.7, .8], { color: 0xffffff, soft: .45, ns: .4 });
+scan(mat.grass, 'leafy_grass_diff', null, .4, { soft: .35 }); mat.grass.color.setRGB(1.12, 1.38, .82);   // la textura escaneada es oscura: se aviva hacia un verde olivo, sin llegar a lima
+scan(mat.paperFloor, 'gravelly_sand_diff', null, 1 / 5, { color: 0xf2e8d8, soft: .4, gray: true });
+scan(mat.wall, null, 'white_plaster_rough_02_nor', .5, { ns: .18 });
+scan(mat.fence, null, 'white_plaster_rough_02_nor', .5, { ns: .3 });
+scan(mat.woodClad, 'brown_planks_05_diff', null, .5, { color: 0xffffff, soft: .4 });
+scan(mat.walnut, 'wood_table_001_diff', null, 1, { color: 0xffffff, soft: .45 });
+scan(mat.oakW, 'oak_veneer_01_diff', null, 1, { color: 0xffffff, soft: .45 });
+['linen', 'linen2', 'velvet', 'rust', 'navy', 'sofaGrey', 'charcoalF', 'cognac', 'felt', 'feltTeal', 'feltPurple'].forEach(k => mat[k] && scan(mat[k], null, 'rough_linen_nor', 2, { ns: .35 }));
+// cochera: concreto pulido claro, manchas muy tenues y juntas de corte cada 3 m
+const texPolish = ctex(1024, 1024, (g, w, h) => {
+  g.fillStyle = '#d2cfc9'; g.fillRect(0, 0, w, h);
+  for (let i = 0; i < 46; i++) {
+    const x = rnd() * w, y = rnd() * h, r = rr(90, 320), c = rnd() < .5 ? '255,255,252' : '96,90,82', gr = g.createRadialGradient(x, y, 0, x, y, r);
+    gr.addColorStop(0, `rgba(${c},${rr(.025, .06)})`); gr.addColorStop(1, `rgba(${c},0)`); g.fillStyle = gr; g.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+  for (let i = 0; i < 26000; i++) { const l = rnd() < .5 ? 40 : 255; g.fillStyle = `rgba(${l},${l},${l},${rnd() * .045})`; g.fillRect(rnd() * w, rnd() * h, 1.5, 1.5); }
+  g.fillStyle = 'rgba(78,74,68,.6)'; g.fillRect(0, 0, w, 3); g.fillRect(0, 0, 3, h);
+}, [1 / 3, 1 / 3]);
+Object.assign(mat.conc, { map: texPolish, roughness: .3, needsUpdate: true }); mat.conc.color.setHex(0xffffff);
 
 /* ---------- entorno: cielo, cerros y mar ---------- */
 const backdrop = new THREE.Group(); scene.add(backdrop); backdrop.visible = false;
@@ -1820,7 +1811,7 @@ const ZONES = [
   { name: 'Cuarto de lavado · 7.54 m²', desc: 'Lavadora y secadora de carga frontal, lavadero y tendedero; puertas a la cocina y al jardín.',
     rects: [[9.03, -.3, 12.6, 2.55]], c: [10.8, 1.3],
     stops: [[[9.35, 1.7, 2.3], [12.0, .8, .3], 76], [[12.3, 1.7, 1.65], [9.4, .9, .5], 76]] },
-  { name: 'Jardín · 49.85 m²', desc: 'Terraza techada con pérgola y serie de focos: <em>comedor para seis</em> junto a la cocina y sala exterior con mesa de fuego. <em>Asador empotrado</em> a un paso de la puerta de la cocina, pasto sintético, cerca de listones de madera y jardinera de lavanda, romero y agaves con un olivo; poco riego para el clima de Ensenada.',
+  { name: 'Jardín · 49.85 m²', desc: 'Terraza de adoquín a cielo abierto junto a la sala:<em>comedor para seis</em> junto a la cocina y sala exterior con mesa de fuego. <em>Asador empotrado</em> a un paso de la puerta de la cocina, pasto sintético, cerca de listones de madera y jardinera de lavanda, romero y agaves con un olivo; poco riego para el clima de Ensenada.',
     rects: [[-.3, -.3, 9.03, 3.65, 9]], c: [4.5, 1.8],
     stops: [[[7.95, 1.7, 3.4], [1.5, .9, .7], 74], [[2.0, 1.6, 1.3], [8.6, 1.0, 2.6], 74], [[4.6, 1.75, .45], [4.5, 2.6, 6.0], 72]] }
 ];
@@ -1895,7 +1886,7 @@ ZONES.forEach(z => { const [n, a] = z.name.split(' · '); z.lbl = label(n.toUppe
   ['Negro mate, cuarzo blanco y la campana al centro.', 'Madera vinílica gris cálida'],
   ['Detrás de la cocina, todo a la vista.', 'Madera vinílica gris cálida'],
   ['Lavar, secar y tender sin salir de casa.', 'Madera vinílica gris cálida'],
-  ['Una mesa bajo la pérgola, el asador junto a la cocina y un olivo al fondo.', 'Adoquín, pasto sintético y jardinera']
+  ['Una mesa al aire libre,el asador junto a la cocina y un olivo al fondo.', 'Adoquín, pasto sintético y jardinera']
 ].forEach(([line, piso], i) => Object.assign(ZONES[i], { line, piso }));
 const EXTZ = new Set([0, 1, 2, 16]);
 ZONES.forEach((z, i) => {
@@ -2069,7 +2060,7 @@ function apply(p) {
   cutPlane.constant = cutOn ? CUT0 + 8.8 * cr * cr : 1e5; U.uPoche.value = cutOn ? 1 : 0;
   // en la lámina: luz pareja y sin sombras, como papel; el sol entra conforme se levanta la casa
   const lit = ramp(p, P0 * .45, P_AER);
-  hemi.intensity = lerp(2.1, .42, lit); hemi.color.copy(HEMI_PAPER).lerp(HEMI_SKY, lit); sun.intensity = lerp(1.1, 3.6, lit); sun.shadow.intensity = lit;
+  hemi.intensity = lerp(2.1, .6, lit); hemi.color.copy(HEMI_PAPER).lerp(HEMI_SKY, lit); sun.intensity = lerp(1.1, 3.6, lit); sun.shadow.intensity = lit;
   const capO = 1 - ramp(p, P0 * .95, P_AER); capMat.opacity = capO; walls.forEach(w => w.cap && (w.cap.visible = capO > .01));
   const lab = 1 - ramp(p, P0 * .34, P0 * .55); planGrp.visible = lab > .01; planGrp.traverse(o => { if (o.material) o.material.opacity = lab; });
   const l1 = ramp(p, P0 * .85, lerp(P0, P_AER, .5)), l2 = ramp(p, P0 * .95, P_AER);
@@ -2129,7 +2120,7 @@ if (useBloom) {
   // el pase de normales solo oculta puntos y líneas: también el cielo, vidrios y rótulos (transparentes)
   const ov = gtao.overrideVisibility.bind(gtao);
   gtao.overrideVisibility = () => { ov(); scene.traverse(o => { if (o.material && o.material.transparent) o.visible = false; }); };
-  composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), .5, .4, 4.2)); composer.addPass(new OutputPass());
+  composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), .32, .35, 5.5)); composer.addPass(new OutputPass());
 }
 addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; renderer.setSize(innerWidth, innerHeight); composer && composer.setSize(innerWidth, innerHeight); });
 camera.aspect = innerWidth / innerHeight;
