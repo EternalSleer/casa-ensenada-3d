@@ -1,0 +1,652 @@
+{
+  "proyecto": "Casa habitación — lectura de planos ARQ-01 a ARQ-04 (esc. 1:100)",
+  "unidades": "metros",
+  "convencion": "x = de eje A (izquierda) a eje G (derecha); y = de eje 1 (fondo/jardín) a eje 9 (frente/calle). Medidas a ejes, lectura aproximada.",
+  "terreno": {
+    "ancho": 12.49,
+    "fondo": 19.93
+  },
+  "ejes": {
+    "x": {
+      "A": 0,
+      "B": 1.43,
+      "C": 3.11,
+      "C'": 3.93,
+      "C\"": 4.43,
+      "C'\"": 4.79,
+      "D": 5.79,
+      "D'": 6.97,
+      "D\"": 7.56,
+      "D'\"": 8.74,
+      "E": 9.03,
+      "E'": 9.86,
+      "E\"": 10.28,
+      "F": 10.85,
+      "F'": 11.97,
+      "G": 12.49
+    },
+    "y": {
+      "1": 0,
+      "1.1": 1.83,
+      "2": 2.55,
+      "3": 3.65,
+      "3.1": 7.08,
+      "4": 8.26,
+      "5": 11.82,
+      "5.1": 13.46,
+      "6": 13.86,
+      "7": 15.06,
+      "7.1": 16.16,
+      "8": 16.62,
+      "8.1": 18.21,
+      "8.2": 18.69,
+      "9": 19.93,
+      "9.1": 20.69
+    }
+  },
+  "niveles": [
+    {
+      "id": "PB",
+      "nombre": "Planta baja",
+      "npt": 0.0,
+      "altura_entrepiso": 2.8,
+      "espacios": [
+        {
+          "id": "jardin_fondo",
+          "nombre": "Jardín",
+          "tipo": "exterior",
+          "area_plano": 49.85,
+          "poly": [
+            [
+              0,
+              0
+            ],
+            [
+              9.03,
+              0
+            ],
+            [
+              9.03,
+              3.65
+            ],
+            [
+              1.43,
+              3.65
+            ],
+            [
+              1.43,
+              18.21
+            ],
+            [
+              0,
+              18.21
+            ]
+          ]
+        },
+        {
+          "id": "cto_lavado",
+          "nombre": "Cto. lavado",
+          "tipo": "interior",
+          "area_plano": 7.54,
+          "rect": [
+            9.03,
+            0,
+            12.49,
+            2.55
+          ]
+        },
+        {
+          "id": "cocina",
+          "nombre": "Cocina",
+          "tipo": "interior",
+          "area_plano": 21.1,
+          "poly": [
+            [
+              9.03,
+              2.55
+            ],
+            [
+              12.49,
+              2.55
+            ],
+            [
+              12.49,
+              7.08
+            ],
+            [
+              7.4,
+              7.08
+            ],
+            [
+              7.4,
+              3.65
+            ],
+            [
+              9.03,
+              3.65
+            ]
+          ]
+        },
+        {
+          "id": "sala",
+          "nombre": "Sala (doble altura)",
+          "tipo": "interior",
+          "area_plano": 27.41,
+          "rect": [
+            1.43,
+            3.65,
+            7.4,
+            8.26
+          ],
+          "doble_altura": true
+        },
+        {
+          "id": "alacena",
+          "nombre": "Alacena",
+          "tipo": "interior",
+          "area_plano": 2.76,
+          "rect": [
+            10.2,
+            7.08,
+            12.49,
+            8.26
+          ]
+        },
+        {
+          "id": "comedor",
+          "nombre": "Comedor",
+          "tipo": "interior",
+          "area_plano": 15.15,
+          "rect": [
+            1.43,
+            8.26,
+            5.79,
+            11.82
+          ]
+        },
+        {
+          "id": "escalera_pb",
+          "nombre": "Escalera",
+          "tipo": "escalera",
+          "rect": [
+            8.8,
+            8.26,
+            12.49,
+            11.82
+          ]
+        },
+        {
+          "id": "medio_bano",
+          "nombre": "1/2 baño",
+          "tipo": "interior",
+          "area_plano": 3.15,
+          "rect": [
+            9.03,
+            11.82,
+            10.6,
+            13.86
+          ]
+        },
+        {
+          "id": "cto_herramientas",
+          "nombre": "Cto. herram.",
+          "tipo": "interior",
+          "area_plano": 2.69,
+          "rect": [
+            10.85,
+            12.2,
+            12.49,
+            13.86
+          ]
+        },
+        {
+          "id": "oficina",
+          "nombre": "Oficina",
+          "tipo": "interior",
+          "area_plano": 19.48,
+          "rect": [
+            1.43,
+            11.82,
+            5.79,
+            16.3
+          ]
+        },
+        {
+          "id": "archivo",
+          "nombre": "Arch.",
+          "tipo": "interior",
+          "area_plano": 2.2,
+          "rect": [
+            1.43,
+            16.3,
+            2.97,
+            18.21
+          ]
+        },
+        {
+          "id": "bano_pb",
+          "nombre": "Baño",
+          "tipo": "interior",
+          "area_plano": 3.64,
+          "rect": [
+            2.97,
+            16.3,
+            5.0,
+            18.21
+          ]
+        },
+        {
+          "id": "cochera",
+          "nombre": "Cochera",
+          "tipo": "exterior",
+          "area_plano": 31.4,
+          "rect": [
+            6.97,
+            13.86,
+            12.49,
+            19.93
+          ]
+        },
+        {
+          "id": "acceso",
+          "nombre": "Acceso",
+          "tipo": "exterior",
+          "rect": [
+            5.79,
+            16.3,
+            6.97,
+            19.93
+          ]
+        }
+      ]
+    },
+    {
+      "id": "PA",
+      "nombre": "Planta alta",
+      "npt": 2.8,
+      "altura_entrepiso": 2.8,
+      "espacios": [
+        {
+          "id": "bano_r3",
+          "nombre": "Baño",
+          "tipo": "interior",
+          "area_plano": 7.51,
+          "rect": [
+            8.4,
+            0,
+            12.49,
+            1.83
+          ]
+        },
+        {
+          "id": "salita",
+          "nombre": "Sala",
+          "tipo": "interior",
+          "area_plano": 4.69,
+          "rect": [
+            8.0,
+            1.83,
+            10.7,
+            3.65
+          ]
+        },
+        {
+          "id": "vestidor_r3",
+          "nombre": "Vestidor",
+          "tipo": "interior",
+          "area_plano": 3.37,
+          "rect": [
+            10.7,
+            1.83,
+            12.49,
+            3.65
+          ]
+        },
+        {
+          "id": "recamara_3",
+          "nombre": "Recámara 3",
+          "tipo": "interior",
+          "area_plano": 18.46,
+          "rect": [
+            7.56,
+            3.65,
+            12.49,
+            7.7
+          ]
+        },
+        {
+          "id": "vacio_sala",
+          "nombre": "Vacío doble altura",
+          "tipo": "vacio",
+          "rect": [
+            1.43,
+            3.65,
+            7.56,
+            8.26
+          ]
+        },
+        {
+          "id": "sala_tv",
+          "nombre": "Sala TV",
+          "tipo": "interior",
+          "area_plano": 21.0,
+          "rect": [
+            1.43,
+            8.26,
+            7.4,
+            11.82
+          ]
+        },
+        {
+          "id": "escalera_pa",
+          "nombre": "Escalera",
+          "tipo": "escalera",
+          "rect": [
+            8.8,
+            8.26,
+            12.49,
+            11.82
+          ]
+        },
+        {
+          "id": "bano_comp",
+          "nombre": "Baño",
+          "tipo": "interior",
+          "area_plano": 5.0,
+          "rect": [
+            10.0,
+            11.82,
+            12.49,
+            13.86
+          ]
+        },
+        {
+          "id": "recamara_2",
+          "nombre": "Recámara 2",
+          "tipo": "interior",
+          "area_plano": 21.15,
+          "poly": [
+            [
+              1.43,
+              11.82
+            ],
+            [
+              5.79,
+              11.82
+            ],
+            [
+              5.79,
+              18.21
+            ],
+            [
+              3.98,
+              18.21
+            ],
+            [
+              3.98,
+              16.16
+            ],
+            [
+              1.43,
+              16.16
+            ]
+          ]
+        },
+        {
+          "id": "vestidor_r2",
+          "nombre": "Vestidor",
+          "tipo": "interior",
+          "area_plano": 4.47,
+          "rect": [
+            1.43,
+            16.16,
+            3.98,
+            18.21
+          ]
+        },
+        {
+          "id": "recamara_1",
+          "nombre": "Recámara 1",
+          "tipo": "interior",
+          "area_plano": 18.18,
+          "rect": [
+            5.79,
+            13.86,
+            9.86,
+            18.21
+          ]
+        },
+        {
+          "id": "vestidor_r1",
+          "nombre": "Vestidor",
+          "tipo": "interior",
+          "area_plano": 5.21,
+          "rect": [
+            9.86,
+            13.86,
+            12.49,
+            16.16
+          ]
+        },
+        {
+          "id": "bano_r1",
+          "nombre": "Baño",
+          "tipo": "interior",
+          "area_plano": 8.81,
+          "rect": [
+            9.86,
+            16.16,
+            12.49,
+            19.93
+          ]
+        },
+        {
+          "id": "balcon",
+          "nombre": "Balcón",
+          "tipo": "exterior",
+          "area_plano": 4.56,
+          "rect": [
+            5.79,
+            18.69,
+            9.86,
+            19.93
+          ]
+        }
+      ]
+    },
+    {
+      "id": "PT",
+      "nombre": "Planta terraza",
+      "npt": 5.6,
+      "altura_entrepiso": 2.6,
+      "espacios": [
+        {
+          "id": "asador",
+          "nombre": "Asador",
+          "tipo": "exterior",
+          "area_plano": 9.67,
+          "rect": [
+            1.43,
+            3.65,
+            4.79,
+            6.55
+          ],
+          "pergola": true
+        },
+        {
+          "id": "bar",
+          "nombre": "Bar",
+          "tipo": "exterior",
+          "area_plano": 7.87,
+          "rect": [
+            4.79,
+            3.65,
+            7.58,
+            6.55
+          ],
+          "pergola": true
+        },
+        {
+          "id": "jacuzzi",
+          "nombre": "Jacuzzi",
+          "tipo": "exterior",
+          "area_plano": 19.77,
+          "rect": [
+            7.58,
+            3.65,
+            12.49,
+            8.26
+          ],
+          "nota": "Plano marca N.P.T. 4.27 — por confirmar"
+        },
+        {
+          "id": "comedor_ext",
+          "nombre": "Comedor ext.",
+          "tipo": "exterior",
+          "area_plano": 9.75,
+          "rect": [
+            1.43,
+            6.55,
+            4.79,
+            9.5
+          ]
+        },
+        {
+          "id": "vestibulo",
+          "nombre": "Vestíbulo",
+          "tipo": "interior",
+          "area_plano": 16.07,
+          "rect": [
+            5.79,
+            8.26,
+            9.03,
+            13.46
+          ]
+        },
+        {
+          "id": "escalera_pt",
+          "nombre": "Escalera",
+          "tipo": "escalera",
+          "rect": [
+            9.03,
+            8.26,
+            12.49,
+            11.82
+          ]
+        },
+        {
+          "id": "lavanderia",
+          "nombre": "Lavandería",
+          "tipo": "interior",
+          "area_plano": 5.23,
+          "rect": [
+            9.03,
+            11.82,
+            12.49,
+            13.46
+          ]
+        },
+        {
+          "id": "bano_pt",
+          "nombre": "Baño",
+          "tipo": "interior",
+          "area_plano": 2.37,
+          "rect": [
+            5.79,
+            13.46,
+            7.0,
+            15.06
+          ]
+        },
+        {
+          "id": "archivo_pt",
+          "nombre": "Arch.",
+          "tipo": "interior",
+          "area_plano": 1.83,
+          "rect": [
+            7.6,
+            15.06,
+            9.0,
+            16.62
+          ]
+        },
+        {
+          "id": "oficina_pt",
+          "nombre": "Oficina",
+          "tipo": "interior",
+          "area_plano": 9.99,
+          "rect": [
+            9.0,
+            13.86,
+            12.49,
+            16.62
+          ]
+        },
+        {
+          "id": "sala_ext",
+          "nombre": "Sala ext.",
+          "tipo": "exterior",
+          "area_plano": 17.96,
+          "rect": [
+            1.43,
+            12.5,
+            4.79,
+            18.21
+          ]
+        }
+      ]
+    },
+    {
+      "id": "AZ",
+      "nombre": "Azotea",
+      "npt": 8.2,
+      "espacios": [
+        {
+          "id": "azotea",
+          "nombre": "Azotea",
+          "tipo": "losa",
+          "area_plano": 49.39,
+          "poly": [
+            [
+              5.79,
+              8.26
+            ],
+            [
+              12.33,
+              8.26
+            ],
+            [
+              12.33,
+              16.62
+            ],
+            [
+              7.6,
+              16.62
+            ],
+            [
+              7.6,
+              15.06
+            ],
+            [
+              5.79,
+              15.06
+            ]
+          ]
+        }
+      ]
+    }
+  ],
+  "confirmado": {
+    "jacuzzi": "Hundido sobre la recámara 3 (N.P.T. 4.27).",
+    "errata_npt": "El N.P.T. 5.40 de planta alta es errata; el nivel correcto es 2.80.",
+    "fachada": "La calle está sobre el eje 9.",
+    "recorrido": "El plano levanta muros y niveles; la cámara entra desde la calle y recorre la planta baja zona por zona.",
+    "estilo": "Loft moderno: madera vinílica gris cálida, negro mate, cuarzo blanco, latón; mucha domótica; luz natural de día.",
+    "puerta_principal": "Existe, al final del andador de acceso (y 13.86, x 5.85–6.91).",
+    "barda_frontal": "Barda al pie del terreno con portón eléctrico de cochera y acceso peatonal (no aparecen en el plano).",
+    "oficina": "Es un estudio híbrido programador/gamer, sin puerta propia al andador.",
+    "archivo": "Es el cuarto de servidores y centro de domótica.",
+    "comedor": "El muro poniente del comedor lleva ventana, no puerta.",
+    "altura_libre_pb": 2.55
+  }
+}
