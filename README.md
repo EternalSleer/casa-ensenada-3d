@@ -16,5 +16,6 @@ python3 -m http.server 8765
 ## Estado
 
 - Planta baja completa: 17 espacios con mobiliario detallado, estilo loft moderno, estudio gamer/programador y cuarto de servidores de domótica.
-- Planta alta completa (lámina ARQ-02): 12 espacios — pasillo, sala TV asomada al vacío, recámara principal con vestidor, baño y balcón a la calle, recámaras 2 y 3 con vestidor y baño, y baño completo. Se llega subiendo la escalera en U y se presenta como una segunda lámina cortada a 1.20 m.
-- Siguiente: terraza y azotea.
+- Planta alta completa (lámina ARQ-02): 13 espacios — pasillo, sala TV asomada al vacío, recámara principal con vestidor, baño y balcón a la calle, recámaras 2 y 3 con vestidor y baño, y baño completo. Se llega subiendo la escalera en U y se presenta como una segunda lámina cortada a 1.20 m.
+- Terraza completa (lámina ARQ-03): 10 espacios — vestíbulo, lavandería, baño, oficina y archivo bajo la azotea; comedor exterior, asador y bar bajo la pérgola, jacuzzi hundido con camastros y sala exterior. Se sube por la misma escalera en U y se presenta como la lámina 03.
+- Siguiente: azotea.
