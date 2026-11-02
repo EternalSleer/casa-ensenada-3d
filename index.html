@@ -113,7 +113,7 @@ body{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;overflow-x:hidden}
 <section id="hero"><div class="k">CASA ENSENADA · ENSENADA, B.C. · 2026</div><h1>Toda casa empieza como un <em>plano.</em></h1><p>Casa de tres niveles en un terreno de 12.49 × 19.93 m. Desliza y entra caminando al dibujo.</p></section>
 <div id="tblock"><div><span>PROYECTO</span>CASA ENSENADA</div><div><span>LÁMINA</span>ARQ-01 · PLANTA BAJA</div><div><span>ESCALA</span>1 : 100</div><div><span>NIVELES</span>N.P.T. 0.00 · 2.80 · 5.60</div></div>
 <aside id="ficha" aria-live="polite"><header><span id="fichaK"></span><button id="fichaX" type="button" aria-label="Cerrar">×</button></header><h3 id="fichaT"></h3><dl id="fichaD"></dl><p id="fichaP"></p></aside>
-<div id="endpage"><div class="pg"><canvas id="endplan"></canvas><canvas id="endplan2"></canvas><div class="et"><small>FIN DEL RECORRIDO · PLANTA BAJA Y ALTA</small><h2>Y todo empezó como un <em>plano.</em></h2><p>29 espacios recorridos en dos plantas. Siguiente lámina: terraza y azotea.</p><button id="endBtn" type="button">↺ VOLVER A EMPEZAR</button></div><div class="sh"></div></div></div>
+<div id="endpage"><div class="pg"><canvas id="endplan"></canvas><canvas id="endplan2"></canvas><div class="et"><small>FIN DEL RECORRIDO · PLANTA BAJA Y ALTA</small><h2>Y todo empezó como un <em>plano.</em></h2><p>30 espacios recorridos en dos plantas. Siguiente lámina: terraza y azotea.</p><button id="endBtn" type="button">↺ VOLVER A EMPEZAR</button></div><div class="sh"></div></div></div>
 
 <div id="scroll"></div>
 <div id="err"></div>
@@ -146,10 +146,13 @@ const ramp = (p, a, b) => ease(clamp((p - a) / (b - a)));
 
 const canvas = document.getElementById('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const MOBILE = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+let DPR = Math.min(devicePixelRatio, MOBILE ? 1.25 : 1.5);
+renderer.setPixelRatio(DPR);
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.autoUpdate = false;   // se pide en apply() solo cuando cambia algo que proyecta sombra
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.12;
 
@@ -179,7 +182,7 @@ scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xffe2bd, 3.6);
 sun.position.copy(SUN_DIR).multiplyScalar(34);
 sun.castShadow = true;
-sun.shadow.mapSize.set(4096, 4096);
+sun.shadow.mapSize.setScalar(MOBILE ? 2048 : 4096);
 Object.assign(sun.shadow.camera, { left: -24, right: 24, top: 24, bottom: -24, near: 1, far: 90 });
 sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.03; sun.shadow.radius = 2;
 scene.add(sun, sun.target);
@@ -375,7 +378,7 @@ function uvM(g) {
   return g;
 }
 
-/* muro: a,b en plano; open = [[ini, fin, tipo, antepecho, dintel, giro]] medidos desde a */
+/* muro: a,b en plano; open = [[ini, fin, tipo, antepecho, dintel, giro, abierta]] medidos desde a; abierta = ángulo de la hoja (0 = cerrada) */
 function wall(a, b, o = {}) {
   const { h = 2.55, t = 0.15, base = 0, open = [], m = mat.wall, parent = scene, cap = true, transom } = o;
   const A = P(...a), B = P(...b), dir = B.clone().sub(A), L = dir.length(); dir.normalize();
@@ -386,14 +389,14 @@ function wall(a, b, o = {}) {
     const me = new THREE.Mesh(g, mm); me.castShadow = me.receiveShadow = true; grp.add(me);
   };
   let cur = 0;
-  for (const [o0, o1, type, sill = 0, head, swing = 1] of [...open].sort((p, q) => p[0] - q[0])) {
+  for (const [o0, o1, type, sill = 0, head, swing = 1, ang = 0] of [...open].sort((p, q) => p[0] - q[0])) {
     piece(cur, o0, 0, h);
     const hd = head ?? (type === 'glass' ? h : type === 'window' ? 2.3 : 2.2);
     if (sill > 0) piece(o0, o1, 0, sill);
     if (hd < h) piece(o0, o1, hd, h);
     if (type === 'open') {}
     else if (type === 'window' || type === 'glass') glazing(grp, o0, o1, sill, hd, t, transom);
-    if (type === 'door' || type === 'doorR' || type === 'main' || type === 'ext') door(grp, o0, o1, hd, t, type, swing);
+    if (type === 'door' || type === 'doorR' || type === 'main' || type === 'ext') door(grp, o0, o1, hd, t, type, swing, ang);
     cur = o1;
   }
   piece(cur, L, 0, h);
@@ -415,7 +418,7 @@ function glazing(grp, x0, x1, y0, y1, t, transom) {
   bar(w, .05, (x0 + x1) / 2, y0 + .025); bar(w, .05, (x0 + x1) / 2, y1 - .025);
   if (transom && transom < y1) bar(w, .05, (x0 + x1) / 2, transom);
 }
-function door(grp, x0, x1, hd, t, type, swing) {
+function door(grp, x0, x1, hd, t, type, swing, ang = 0) {
   const w = x1 - x0, main = type === 'main', hr = main || type === 'doorR', piv = new THREE.Group(); piv.position.set(hr ? x1 : x0, 0, 0);
   const wood = main || type === 'ext';
   const leaf = new THREE.Mesh(new THREE.BoxGeometry(w - .02, hd - .01, main ? .06 : .045), wood ? mat.woodClad : mat.doorW);
@@ -425,7 +428,7 @@ function door(grp, x0, x1, hd, t, type, swing) {
     const lock = new THREE.Mesh(new THREE.BoxGeometry(.06, .16, .1), mat.dark); lock.position.set(-w + .12, 1.05, 0); piv.add(lock);
     const pull = new THREE.Mesh(new THREE.BoxGeometry(.03, 1.2, .14), mat.frame); pull.position.set(-w + .1, 1.05, 0); piv.add(pull);
   }
-  piv.rotation.y = 0;
+  piv.rotation.y = ang;
   grp.add(piv);
   const jamb = (x) => { const me = new THREE.Mesh(new THREE.BoxGeometry(.04, hd, t + .02), wood ? mat.frame : mat.casing); me.position.set(x, hd / 2, 0); grp.add(me); };
   jamb(x0 + .02); jamb(x1 - .02);
@@ -510,18 +513,18 @@ wall([5.79, 19.93], [9.86, 19.93], { ...UP, h: 1.0, t: .04, open: [[0, 4.07, 'gl
 /* ---------- planta alta: muros interiores, puertas, pisos y escalera a la terraza (ARQ-02) ---------- */
 const paIn = new THREE.Group(); up1.add(paIn);          // interiores de planta alta: solo se dibujan cuando hacen falta
 const PAI = { base: F1, h: H2, t: .12, parent: paIn, cap: false };
-wall([7.56, 1.80], [12.49, 1.80], { ...PAI, open: [[0.08, 0.88, 'door']] });                     // baño R3, desde la salita
+wall([7.56, 1.80], [12.49, 1.80], { ...PAI, open: [[0.08, 0.88, 'door', 0, 2.2, 1, 1.45]] });                     // baño R3, desde la salita
 wall([10.25, 1.80], [10.25, 3.63], PAI);                                                     // vestidor R3
-wall([10.25, 3.63], [12.49, 3.63], { ...PAI, open: [[0.08, 0.8, 'door']] });
+wall([10.25, 3.63], [12.49, 3.63], { ...PAI, open: [[0.08, 0.8, 'door', 0, 2.2, 1, 1.45]] });
 wall([7.56, 8.23], [12.49, 8.23], { ...PAI, open: [[0.08, 0.98, 'doorR']] });                    // recámara 3, desde el pasillo
 wall([8.71, 7.56], [8.71, 8.23], PAI);                                                       // remate del clóset
 wall([1.43, 11.80], [5.79, 11.80], { ...PAI, open: [[3.52, 4.28, 'doorR']] });                   // recámara 2
 wall([5.79, 11.80], [5.79, 18.21], PAI);
 wall([1.43, 16.14], [3.91, 16.14], PAI);                                                     // vestidor R2
-wall([3.91, 16.14], [3.91, 18.21], { ...PAI, open: [[1.1, 1.9, 'door']] });
+wall([3.91, 16.14], [3.91, 18.21], { ...PAI, open: [[1.1, 1.9, 'door', 0, 2.2, 1, -1.45]] });
 wall([5.79, 13.84], [12.49, 13.84], { ...PAI, open: [[0.07, 1.01, 'door']] });                   // recámara principal
-wall([9.83, 13.84], [9.83, 18.69], { ...PAI, open: [[0.08, 0.81, 'door']] });                    // vestidor principal
-wall([9.83, 16.14], [12.49, 16.14], { ...PAI, open: [[0.07, 0.82, 'door']] });                   // baño principal, desde el vestidor
+wall([9.83, 13.84], [9.83, 18.69], { ...PAI, open: [[0.08, 0.81, 'door', 0, 2.2, 1, 1.45]] });                    // vestidor principal
+wall([9.83, 16.14], [12.49, 16.14], { ...PAI, open: [[0.07, 0.82, 'door', 0, 2.2, 1, -1.45]] });                   // baño principal, desde el vestidor
 wall([9.21, 11.80], [9.21, 13.84], { ...PAI, open: [[0.14, 0.95, 'door']] });                    // baño completo
 wall([9.21, 11.80], [12.49, 11.80], PAI);
 wall([8.71, 12.80], [9.21, 12.80], PAI); wall([8.71, 12.80], [8.71, 13.84], PAI);              // ducto
@@ -1539,14 +1542,12 @@ car(8.3, 17.45, mat.carA, 'sedan'); car(10.55, 16.95, mat.carB, 'pickup');   // 
 {
   const g = G(3.07, 18.5);
   rb(g, 3.3, .45, .36, 0, 0, 0, mat.concPot, .02, 2); bx(g, 3.2, .01, .28, 0, .43, 0, mat.soil);
-  [-1.25, -.4, .45, 1.25].forEach((x, k) => agave(g, x, .44, 0, k % 2 ? .9 : 1.1));
-  [-.85, .0, .85].forEach(x => grasses(g, x, .44, 0, .7));
-  for (let k = 0; k < 160; k++) { sp(furn, rr(.025, .05), rr(.2, 5.6) - CX, .01, rr(18.7, 19.75) - CZ, mat.pebble, 1, .5, 1, 0).userData.noEdge = true; }
+  // franja de 1.72 m: solo la jardinera con tres agaves, pasto y un olivo en la esquina
+  [-1.1, 0, 1.1].forEach((x, k) => agave(g, x, .44, 0, k === 1 ? 1.15 : .95));
   olive(.8, 19.25, 1.15);
   [[1.5, 19.84], [3.2, 19.84], [4.9, 19.84]].forEach(([x, y]) => { const w = G(x, y); rb(w, .3, .08, .1, 0, 1.75, 0, mat.black, .02, 2); bx(w, .26, .01, .06, 0, 1.745, .0, mat.led); });
   // luminarias de piso en el andador
   [15.2, 16.8, 18.4].forEach(y => { const b = G(6.83, y); cy(b, .05, .55, 0, 0, 0, mat.black, 16); cy(b, .045, .06, 0, .44, 0, mat.glow, 16); cy(b, .052, .02, 0, .55, 0, mat.black, 16); });
-  olive(2.1, 19.55, .8);
   { const m = G(5.6, 20.08); rb(m, .3, .38, .1, 0, 1.1, 0, mat.black, .01, 2); bx(m, .24, .015, .01, 0, 1.38, .052, mat.steel); }
 }
 
@@ -1628,21 +1629,28 @@ walls.forEach(w => w.grp.traverse(o => {
 }));
 
 /* ---------- horneado: une cada material en una sola malla (menos llamadas de dibujo) ---------- */
+// copia de la geometría lista para unir: atributos comunes, en el espacio de `rel` y siempre indexada (sin índice se triplican los vértices)
+const _rel = new THREE.Matrix4();
+function prepGeo(o, rel, line = false) {
+  const geo = line && o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+  Object.keys(geo.attributes).forEach(k => { if (!(line ? ['position'] : ['position', 'normal', 'uv']).includes(k)) geo.deleteAttribute(k); });
+  if (!line && !geo.attributes.uv) geo.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(geo.attributes.position.count * 2), 2));
+  if (!line && !geo.index) geo.setIndex([...Array(geo.attributes.position.count).keys()]);
+  geo.morphAttributes = {}; geo.clearGroups();
+  geo.applyMatrix4(_rel.copy(rel.matrixWorld).invert().multiply(o.matrixWorld));
+  return geo;
+}
 function bake(grp) {
   grp.updateMatrixWorld(true);
   const byMat = new Map(), edges = [], kill = [];
   grp.traverse(o => {
     if (!o.isMesh) return;
-    let geo = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
-    Object.keys(geo.attributes).forEach(k => { if (!['position', 'normal', 'uv'].includes(k)) geo.deleteAttribute(k); });
-    if (!geo.attributes.uv) geo.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(geo.attributes.position.count * 2), 2));
-    geo.morphAttributes = {}; geo.clearGroups();
-    geo.applyMatrix4(o.matrixWorld);
+    const geo = prepGeo(o, grp);
     if (!byMat.has(o.material)) byMat.set(o.material, []);
     byMat.get(o.material).push(geo);
     if (!o.userData.noEdge && o.material.transparent !== true) {
       const src = o.userData.edge === undefined ? o.geometry : o.userData.edge;
-      if (src) { const e = new THREE.EdgesGeometry(src, o.userData.edgeTh ?? 40); e.applyMatrix4(o.matrixWorld); edges.push(inkify(e)); }
+      if (src) { const e = new THREE.EdgesGeometry(src, o.userData.edgeTh ?? 40); e.applyMatrix4(_rel.copy(grp.matrixWorld).invert().multiply(o.matrixWorld)); edges.push(inkify(e)); }
     }
     kill.push(o);
   });
@@ -1681,6 +1689,40 @@ function wardrobe(x, y, ry, w, h = 2.4, m = mat.oakW) {   // 60 cm de fondo
   const g = G(x, y, ry), n = Math.max(2, Math.round(w / .55)), dw = w / n;
   rb(g, w, h, .6, 0, 0, 0, m, .006, 1);
   for (let i = 0; i < n; i++) { const cx = -w / 2 + dw * (i + .5); bx(g, dw - .012, h - .06, .012, cx, .03, .306, m); pull(g, cx + (i % 2 ? -1 : 1) * (dw / 2 - .06), h * .42, .306, .5, true); }
+  return g;
+}
+/* vestidor abierto: módulos de 60 cm de fondo (colgado) o 40 cm (repisas y zapatos), barras de colgado doble a 1.00 y 2.00 m,
+   colgado largo a 1.75 m, maletero a 2.10 m con tira LED, zoclo negro; frente local +z */
+const garMats = [0xe8e2d6, 0xc9c0b0, 0x8a8f96, 0x3f4651, 0x2d3440, 0x9a6b4a, 0x5d6b5a, 0xd8cfc0, 0x1f2124, 0xb9a48a, 0x7a3b2e, 0xf2efe9].map(c => M({ map: texWeave, color: c, roughness: 1 }));
+const garM = () => garMats[Math.floor(rnd() * garMats.length)];
+function hangers(g, x0, x1, yRod, len, z) {   // prendas colgadas, una cada 6–9 cm
+  tb(g, [[x0 + .02, yRod, z], [x1 - .02, yRod, z]], .012, mat.chrome, 2, 8);
+  for (let x = x0 + .06; x < x1 - .05; x += rr(.06, .09)) {
+    const L = len * rr(.78, 1), p = rb(g, .028, L, .44, x, yRod - L - .03, z, garM(), .012, 1); p.rotation.z = rr(-.04, .04);
+    tb(g, [[x, yRod - .03, z - .17], [x, yRod + .015, z], [x, yRod - .03, z + .17]], .004, mat.chrome, 6, 4);
+  }
+}
+function folded(g, x, y, z, n) { let h = 0; for (let k = 0; k < n; k++) { const t = rr(.03, .05); rb(g, rr(.26, .3), t, rr(.24, .28), x + rr(-.01, .01), y + h, z, garM(), .012, 2); h += t; } }
+function shoes(g, x, y, z, tilt) { const m = rnd() < .5 ? mat.black : rnd() < .5 ? mat.leather || mat.cognac : mat.white; [-.055, .055].forEach(d => { const sh = rb(g, .09, .08, .26, x + d, y, z, m, .035, 2); sh.rotation.x = tilt; }); }
+function closetRun(x, y, ry, mods, dep = .6, h = 2.4) {
+  const g = G(x, y, ry), W = mods.reduce((a, m) => a + m[1], 0);
+  bx(g, W, h, .02, 0, 0, -dep / 2 + .01, mat.oakW);
+  let cx = -W / 2; bx(g, .025, h, dep, cx + .0125, 0, 0, mat.oakW);
+  mods.forEach(([k, w]) => {
+    const x0 = cx, x1 = cx + w, xm = (x0 + x1) / 2, zf = dep / 2; cx = x1;
+    bx(g, .025, h, dep, x1 - .0125, 0, 0, mat.oakW); bx(g, w, .025, dep, xm, h - .025, 0, mat.oakW); bx(g, w, .08, dep - .04, xm, 0, -.02, mat.black);
+    bx(g, w, .025, dep, xm, 2.1, 0, mat.oakW); bx(g, w - .05, .01, .012, xm, 2.088, zf - .03, mat.led);
+    for (let b = x0 + .06; b < x1 - .2; b += .32) rb(g, .28, .22, Math.min(.36, dep - .06), b + .14, 2.13, 0, rnd() < .5 ? mat.kraft : mat.linen2, .015, 2);   // cajas en el maletero
+    if (k === 'doble') { hangers(g, x0, x1, 2.0, .85, 0); hangers(g, x0, x1, 1.02, .82, 0); }
+    else if (k === 'largo') { hangers(g, x0, x1, 1.75, 1.3, 0); for (let sx = x0 + .12; sx < x1 - .1; sx += .2) shoes(g, sx, .1, zf - .16, 0); }
+    else if (k === 'repisas') { [.1, .46, .82, 1.18, 1.54, 1.86].forEach((hy, j) => { bx(g, w - .05, .02, dep - .03, xm, hy, .01, mat.oakW); if (j) folded(g, xm + (rnd() < .5 ? -.08 : .08), hy + .02, .03, 2 + Math.floor(rnd() * 4)); }); }
+    else if (k === 'cajones') {
+      [0, 1, 2, 3].forEach(r => { bx(g, w - .05, .2, .02, xm, .1 + r * .21, zf - .01, mat.oakW); pull(g, xm - .08, .21 + r * .21, zf - .01, .16); });
+      [1.25, 1.6, 1.95].forEach(hy => { bx(g, w - .05, .02, dep - .03, xm, hy, .01, mat.oakW); folded(g, xm, hy + .02, .03, 2 + Math.floor(rnd() * 3)); });
+      bx(g, w - .04, .02, dep - .02, xm, .94, 0, mat.walnut);
+    }
+    else if (k === 'zapatos') { for (let r = 0; r < 7; r++) { const hy = .14 + r * .26, sh = bx(g, w - .05, .02, dep - .05, xm, hy, 0, mat.oakW); sh.rotation.x = -.22; for (let sx = x0 + .12; sx < x1 - .08; sx += .2) shoes(g, sx, hy + .03, .02, -.22); } }
+  });
   return g;
 }
 function dresser(x, y, ry, w = 1.6) {
@@ -1767,7 +1809,10 @@ GY = F1; GP = paFurn;
   leafyPlant(5.35, 17.85, .8, mat.whiteM);
   [[2.7, 14.6], [4.5, 13.0], [4.85, 17.2]].forEach(([x, y]) => downlight(x, y));
   // vestidor 2
-  wardrobe(1.78, 17.15, PI / 2, 1.85); wardrobe(2.96, 16.5, 0, 1.65); cy(G(2.6, 17.5), .25, .42, 0, 0, 0, mat.linen2, 28); downlight(2.7, 17.3);
+  closetRun(1.77, 17.17, PI / 2, [['largo', .7], ['cajones', .5], ['doble', .7]]);
+  closetRun(2.965, 16.425, 0, [['repisas', .58], ['zapatos', .55], ['repisas', .6]], .45);
+  { const b = G(2.6, 17.93); rb(b, .8, .1, .36, 0, .36, 0, mat.linen2, .04, 3); bx(b, .76, .36, .3, 0, 0, 0, mat.walnut); }
+  downlight(2.7, 17.3);
 
   // baño completo: lavabo e inodoro al sur, regadera a lo ancho del lado oriente
   { const v = blackVanity(9.65, 13.5, PI, .6); roundMirror(v, .24, 0, 1.45, -.235); }
@@ -1786,7 +1831,10 @@ GY = F1; GP = paFurn;
   [6.08, 9.5].forEach(x => bx(G(x, 18.55), .3, H1 - .1, .04, 0, .05, 0, mat.sheer));
   [[7.3, 14.9], [7.3, 18.0], [8.0, 16.5]].forEach(([x, y]) => downlight(x, y));
   // vestidor principal
-  wardrobe(12.05, 15.0, -PI / 2, 2.1); wardrobe(11.28, 14.2, 0, .95); cy(G(11.1, 15.3), .3, .42, 0, 0, 0, mat.velvet, 32);
+  closetRun(12.05, 14.995, -PI / 2, [['doble', .8], ['cajones', .55], ['largo', .8]]);
+  closetRun(11.3, 14.1, 0, [['repisas', .45], ['zapatos', .45]], .4);
+  closetRun(11.25, 15.78, PI, [['doble', 1.0]]);
+  cy(G(11.0, 14.95), .24, .42, 0, 0, 0, mat.velvet, 32);
   { const m = G(9.9, 14.95, PI / 2); bx(m, .6, 1.8, .01, 0, .2, 0, mat.mirror); } downlight(11.0, 15.0);
   // baño principal: doble lavabo, inodoro, tina exenta y regadera
   [11.23, 11.94].forEach(x => { const v = vesselVanity(x, 16.43, 0, .7); roundMirror(v, .22, 0, 1.45, -.2); });
@@ -1808,7 +1856,10 @@ GY = F1; GP = paFurn;
   { const s = G(9.55, 2.01); rb(s, 1.1, .9, .3, 0, 0, 0, mat.oakW, .01, 2); [.3, .6].forEach(h => bx(s, 1.06, .02, .28, 0, h, .01, mat.oakW)); books(s, -.5, .45, .62, .02, .24, .26); }
   downlight(8.9, 2.7);
   // vestidor 3
-  wardrobe(11.0, 2.16, 0, 1.3); wardrobe(12.05, 2.7, -PI / 2, 1.65); downlight(11.2, 2.8);
+  closetRun(11.33, 2.16, 0, [['doble', .75], ['cajones', .5], ['largo', .75]]);
+  closetRun(12.15, 3.015, -PI / 2, [['zapatos', .52], ['repisas', .55]], .4);
+  { const m = G(10.33, 3.0, PI / 2); bx(m, .6, 1.8, .01, 0, .2, 0, mat.mirror); }
+  downlight(11.2, 2.8);
   // baño de la recámara 3: lavabo e inodoro contra el muro sur, regadera grande al oriente
   { const v = blackVanity(9.05, 1.47, PI, .7); roundMirror(v, .26, 0, 1.45, -.235); }
   toilet(9.8, 1.45, PI);
@@ -1948,9 +1999,44 @@ label('N ↑', 'NORTE', 14.45, -3.6, 1.3, 0, 90);
   scene.children.forEach(c => { if (c.isMesh && c.geometry.type === 'BoxGeometry') add(c); });
 }
 
+/* ---------- unión de lo estático: muros, ventanas, puertas, losas y contornos en pocas mallas por material ----------
+   cada pieza suelta era una llamada de dibujo en la sombra, en la oclusión y en el color (más de 2,600 por cuadro) */
+const capMeshes = [];
+function mergeStatic(root, items, skip = []) {
+  root.updateMatrixWorld(true);
+  const sets = new Map(), kill = new Set();
+  const walk = o => {
+    if (skip.includes(o) || !o.visible) return;
+    if ((o.isMesh || o.isLineSegments) && !Array.isArray(o.material) && !o.isInstancedMesh) {
+      const k = [o.material.uuid, o.isLineSegments, o.castShadow, o.receiveShadow, o.renderOrder].join();
+      if (!sets.has(k)) sets.set(k, { o, geos: [] });
+      sets.get(k).geos.push(prepGeo(o, root, o.isLineSegments)); kill.add(o);
+    }
+    o.children.forEach(walk);
+  };
+  items.forEach(walk);
+  // lo que no se une (oculto o excluido) se queda en su lugar aunque su padre desaparezca; los grupos que quedan vacíos se quitan
+  const depth = o => { let d = 0; for (let p = o.parent; p && p !== root; p = p.parent) d++; return d; }, touched = new Set();
+  kill.forEach(o => { for (let p = o.parent; p && p !== root; p = p.parent) touched.add(p); });
+  kill.forEach(o => { [...o.children].forEach(c => { if (!kill.has(c)) o.parent.attach(c); }); o.parent.remove(o); });
+  [...touched].map(g => [g, depth(g)]).sort((a, b) => b[1] - a[1]).forEach(([g]) => { if (g.isGroup && !g.children.length && g.parent && !skip.includes(g)) g.parent.remove(g); });
+  sets.forEach(({ o, geos }) => {
+    const me = new (o.isLineSegments ? THREE.LineSegments : THREE.Mesh)(mergeGeometries(geos), o.material);
+    me.castShadow = o.castShadow; me.receiveShadow = o.receiveShadow; me.renderOrder = o.renderOrder; me.userData.noEdge = true;
+    if (o.isLineSegments) me.raycast = () => {};
+    if (o.material === capMat) capMeshes.push(me);
+    root.add(me);
+  });
+}
+mergeStatic(scene, [...walls.filter(w => w.parent === scene).map(w => w.grp), ...scene.children.filter(c => c.isMesh && c !== skyDome)]);
+mergeStatic(riseGrp, riseGrp.children, [furn, garageGate, pedGate, flames]);
+mergeStatic(paIn, paIn.children, [paFurn]);
+mergeStatic(up1, up1.children, [paIn]);
+mergeStatic(up2, up2.children);
+
 /* ---------- zonas del recorrido (coordenadas de plano: [x, altura, y]) ---------- */
 const ZONES = [
-  { name: 'Patio frontal', desc: 'Jardinera de concreto con agaves y piedra blanca frente al estudio; un olivo en la esquina.',
+  { name: 'Patio frontal', desc: 'Jardinera de concreto con tres agaves frente al estudio, pasto y un olivo en la esquina.',
     rects: [[0, 18.21, 5.82, 19.93, 2.76]], c: [2.9, 19.07],
     stops: [[[6.5, 1.6, 19.7], [1.0, .6, 19.2], 66]] },   // franja de 1.72 m: una sola vista; desde el otro extremo el olivo tapa la cámara
   { name: 'Pasillo lateral', desc: 'Andador de piedras de paso entre la barda y la casa, con cipreses, setos y luces bajas; une el frente con el jardín.',
@@ -2004,6 +2090,8 @@ const ZONES = [
 ];
 // planta alta (ARQ-02): mismas reglas un piso más arriba; las paradas llevan altura absoluta (ojo a 4.40)
 const PA0 = ZONES.length;
+// cada suite se recorre completa: recámara y luego, caminando por sus puertas (via), vestidor, baño y salita; entre suites se salta por arriba.
+// una parada puede llevar via propia (cuarto elemento) para rodear camas y bancas en lugar de cruzarlas
 ZONES.push(
   { name: 'Llegada y pasillo', y0: F1, desc: 'Diecisiete peraltes después, un pasillo abierto a la sala TV reparte a las tres recámaras y al baño completo; consola de nogal con arte en el muro.',
     rects: [[6.6, 8.26, 9.21, 13.84], [5.79, 11.8, 6.6, 13.84]], c: [7.6, 11.0],
@@ -2011,35 +2099,46 @@ ZONES.push(
   { name: 'Sala TV · 21.00 m²', y0: F1, desc: 'Sala en L de espaldas al vacío de doble altura, con la sala de abajo a la vista; mueble de TV de nogal y pantalla al muro.',
     rects: [[1.43, 8.26, 6.6, 11.8]], c: [4.0, 10.0],
     stops: [[[6.3, 4.4, 11.45], [2.2, 3.7, 8.9], 68], [[1.8, 4.45, 11.0], [5.4, 4.1, 5.6], 70]] },
-  { name: 'Recámara 2 · 21.15 m²', y0: F1, desc: 'Cama contra el muro norte con burós de nogal, escritorio junto a la ventana y cómoda frente a su propio <em>vestidor</em>.',
-    rects: [[1.43, 11.8, 5.79, 16.14], [3.91, 16.14, 5.79, 18.21], [1.43, 16.14, 3.91, 18.21]], c: [3.6, 14.2],
+  { name: 'Recámara 2 · 21.15 m²', y0: F1, desc: 'Cama contra el muro norte con burós de nogal, escritorio junto a la ventana y cómoda; al fondo, su propio <em>vestidor</em>.',
+    rects: [[1.43, 11.8, 5.79, 16.14], [3.91, 16.14, 5.79, 18.21]], c: [3.6, 14.2],
     stops: [[[5.35, 4.4, 12.25], [2.2, 3.6, 15.4], 70], [[2.2, 4.45, 15.3], [4.6, 3.7, 12.0], 70]] },
+  { name: 'Vestidor · 4.47 m²', y0: F1, desc: 'Vestidor abierto: colgado largo y doble, cajonera, repisas para ropa doblada, zapatera y una banca bajo la ventana.',
+    rects: [[1.43, 16.14, 3.91, 18.21]], c: [2.67, 17.2],
+    via: [[4.3, 4.4, 15.2], [4.9, 4.4, 16.6], [4.45, 4.4, 17.65]],
+    stops: [[[3.55, 4.45, 17.65], [1.9, 3.7, 16.8], 76]] },
   { name: 'Baño completo · 5.00 m²', y0: F1, desc: 'Lavabo negro con cuarzo blanco, espejo redondo y regadera de piso a techo con cancel de vidrio.',
     rects: [[9.21, 11.8, 12.49, 13.84], [8.71, 12.8, 9.21, 13.84]], c: [10.8, 12.8],
     stops: [[[10.85, 5.1, 11.95], [9.6, 3.35, 13.5], 76], [[9.45, 4.4, 12.15], [11.6, 3.9, 13.2], 72]] },
   { name: 'Recámara principal · 18.18 m²', y0: F1, desc: 'Cama king contra una cabecera de nogal iluminada, banca al pie, sillón de lectura y <em>cancel corredizo</em> al balcón sobre la calle; vestidor y baño propios.',
     rects: [[5.79, 13.84, 9.83, 18.69]], c: [7.8, 16.3],
-    stops: [[[6.3, 4.4, 14.15], [9.3, 3.7, 17.2], 70], [[9.2, 4.45, 18.35], [6.4, 3.9, 14.6], 70]] },
-  { name: 'Vestidor principal · 5.21 m²', y0: F1, desc: 'Clóset en L de piso a techo, espejo de cuerpo completo y paso directo al baño principal.',
+    stops: [[[6.3, 4.4, 14.15], [9.3, 3.7, 17.2], 70],
+      [[9.2, 4.45, 18.3], [6.3, 3.9, 14.8], 70, [[6.9, 4.45, 17.9]]],
+      [[9.2, 4.45, 14.35], [6.8, 3.8, 18.2], 70, [[6.9, 4.45, 17.4], [6.9, 4.45, 14.6]]]] },
+  { name: 'Vestidor principal · 5.21 m²', y0: F1, desc: 'Vestidor abierto en U: colgado doble y largo, cajonera, repisas, zapatera, espejo de cuerpo completo y paso directo al baño principal.',
     rects: [[9.83, 13.84, 12.49, 16.14]], c: [11.2, 15.0],
-    stops: [[[10.0, 5.15, 16.0], [11.9, 3.3, 14.3], 78]] },   // vestidor chico: cámara alta en la esquina
+    via: [[9.6, 4.45, 14.3]],
+    stops: [[[10.25, 4.45, 15.0], [12.0, 3.6, 15.0], 74]] },
   { name: 'Baño principal · 8.81 m²', y0: F1, desc: 'Doble lavabo de nogal con espejos redondos, <em>tina exenta</em> junto al muro y regadera con cancel bajo la ventana a la calle.',
     rects: [[9.83, 16.14, 12.49, 19.93]], c: [11.2, 18.0],
-    stops: [[[10.25, 4.4, 16.6], [11.4, 3.6, 19.4], 72], [[11.4, 4.4, 17.4], [10.2, 3.6, 19.3], 72]] },
+    via: [[10.3, 4.45, 15.65], [10.28, 4.45, 16.3]],
+    stops: [[[10.3, 4.45, 16.8], [11.4, 3.6, 19.4], 72], [[11.4, 4.4, 17.4], [10.2, 3.6, 19.3], 72]] },
   { name: 'Balcón · 4.56 m²', y0: F1, desc: 'Balcón al frente bajo la losa de la terraza: dos sillones, mesa lateral y jardinera de pastos contra el barandal de vidrio.',
     rects: [[5.79, 18.69, 9.86, 20.1]], c: [7.8, 19.3],
     stops: [[[9.5, 4.4, 18.95], [6.0, 3.9, 19.7], 70]] },
   { name: 'Recámara 3 · 18.46 m²', y0: F1, desc: 'Al fondo, hacia el jardín: cama contra el muro oriente, clóset a lo largo y una salita junto a la ventana; vestidor y baño propios.',
     rects: [[7.56, 3.63, 12.49, 8.23]], c: [10.0, 5.9],
     stops: [[[8.05, 4.4, 7.75], [12.0, 3.7, 4.9], 72], [[11.9, 4.45, 4.05], [8.2, 3.8, 6.8], 72]] },
+  { name: 'Vestidor · 3.37 m²', y0: F1, desc: 'Vestidor abierto en escuadra: colgado doble y largo, cajonera, zapatera y repisas, con espejo junto a la puerta.',
+    rects: [[10.25, 1.8, 12.49, 3.63]], c: [11.4, 2.7],
+    via: [[10.7, 4.45, 4.1], [10.7, 4.45, 3.45]],
+    stops: [[[10.55, 4.5, 3.35], [12.0, 3.5, 2.1], 76]] },
   { name: 'Salita · 4.69 m²', y0: F1, desc: 'Sillón de lectura, mesa lateral de nogal y un librero bajo frente a la ventana al jardín.',
     rects: [[7.56, 1.8, 10.25, 3.63]], c: [8.9, 2.7],
+    via: [[10.7, 4.45, 3.45], [10.7, 4.45, 4.1]],
     stops: [[[10.0, 4.4, 3.9], [7.9, 3.7, 2.3], 68]] },
-  { name: 'Vestidor · 3.37 m²', y0: F1, desc: 'Vestidor compacto en escuadra con puertas de encino.',
-    rects: [[10.25, 1.8, 12.49, 3.63]], c: [11.4, 2.7],
-    stops: [[[10.4, 5.15, 3.5], [12.0, 3.3, 2.0], 78]] },   // vestidor de 2 × 1.7 m: cámara alta en la esquina
   { name: 'Baño · 7.51 m²', y0: F1, desc: 'Lavabo negro e inodoro contra el muro sur y regadera de lado a lado con cancel de vidrio; ventana alta al norte.',
     rects: [[7.56, 0, 12.49, 1.8]], c: [10.0, .9],
+    via: [[9.6, 4.4, 3.3], [8.1, 4.4, 2.3], [8.05, 4.4, 1.55]],
     stops: [[[10.15, 4.5, .45], [8.2, 3.7, 1.5], 74]] }
 );
 ZONES.forEach(z => { z.y0 = z.y0 ?? 0; });
@@ -2070,24 +2169,28 @@ ZONES.forEach((z, i) => {
     key([6.245, 30, 19.5], [6.245, F1, 9.965], 36, 3.0, { type: 'sheet' });
     key([6.245, 29.4, 19.3], [6.245, F1, 9.965], 36, 2.6, { type: 'sheetHold' });
   }
-  key([cx, y0 + 8.5, cy + 1.6], [cx, y0, cy - .3], 55, 2.4, { type: 'over', z: i });
-  key([cx, y0 + 8.3, cy + 1.5], [cx, y0, cy - .3], 55, 1.8, { type: 'overHold', z: i });
   const [p1, t1, f1] = z.stops[0];
-  key([p1[0], y0 + 3.0, p1[2]], t1, f1, 2.0, { type: 'drop', z: i });
+  if (z.via) z.via.forEach(v => key(v, t1, f1, 1.5, { type: 'move', z: i }));
+  else {
+    key([cx, y0 + 8.5, cy + 1.6], [cx, y0, cy - .3], 55, 2.4, { type: 'over', z: i });
+    key([cx, y0 + 8.3, cy + 1.5], [cx, y0, cy - .3], 55, 1.8, { type: 'overHold', z: i });
+    key([p1[0], y0 + 3.0, p1[2]], t1, f1, 2.0, { type: 'drop', z: i });
+  }
   key(p1, t1, f1, 1.6, { type: 'eye', z: i }); z.revA = KEYS.length - 1;
   key(drift(p1, t1), t1, f1, 3.4, { type: 'reveal', z: i }); z.revB = KEYS.length - 1;
   key(drift(p1, t1, .1), t1, f1, 1.6, { type: 'hold', z: i });
   let prev = [drift(p1, t1, .1), t1, f1];
-  z.stops.slice(1).forEach(([p, t, f]) => {
+  z.stops.slice(1).forEach(([p, t, f, via]) => {
     const mid = [(prev[0][0] + p[0]) / 2, Math.max(y0 + 2.15, p[1]), (prev[0][2] + p[2]) / 2];
     const mt = [(prev[1][0] + t[0]) / 2, (prev[1][1] + t[1]) / 2, (prev[1][2] + t[2]) / 2];
-    key(mid, mt, (prev[2] + f) / 2, 1.6, { type: 'move', z: i });
+    if (via) via.forEach(v => key(v, t, f, 1.4, { type: 'move', z: i }));
+    else key(mid, mt, (prev[2] + f) / 2, 1.6, { type: 'move', z: i });
     key(p, t, f, 1.6, { type: 'eye', z: i });
     key(drift(p, t, .1), t, f, 3.0, { type: 'hold', z: i });
     prev = [drift(p, t, .1), t, f];
   });
   const nt = nz ? [nz.c[0], nz.y0, nz.c[1]] : [6.2, F1, 9.6];
-  key([prev[0][0], y0 + 3.6, prev[0][2]], nt, prev[2], 1.8, { type: 'lift', z: i });
+  if (!nz || !nz.via) key([prev[0][0], y0 + 3.6, prev[0][2]], nt, prev[2], 1.8, { type: 'lift', z: i });
   z.rIdx = [];
   z.rects.forEach(r => {
     const k = rects.length; z.rIdx.push(k); rects.push(r);
@@ -2117,7 +2220,7 @@ ZONES.forEach(z => { const [n, a] = z.name.split(' · '); z.lbl = label(n.toUppe
 
 /* ---------- datos narrativos y de ficha por zona ---------- */
 [
-  ['Del portón a la puerta hay veinte pasos. Lo demás todavía es tinta.', 'Pasto y piedra blanca'],
+  ['Del portón a la puerta hay veinte pasos. Lo demás todavía es tinta.', 'Pasto'],
   ['Un andador angosto, piedra por piedra, hasta el fondo del jardín.', 'Piedras de paso de concreto'],
   ['Adoquín, madera y una puerta que te reconoce.', 'Adoquín'],
   ['Aquí se enciende la casa: una pantalla para toda la casa.', 'Madera vinílica gris cálida'],
@@ -2136,22 +2239,23 @@ ZONES.forEach(z => { const [n, a] = z.name.split(' · '); z.lbl = label(n.toUppe
   ['Una mesa al aire libre, el asador junto a la cocina y un olivo al fondo.', 'Adoquín, pasto sintético y jardinera'],
   ['Diecisiete peraltes arriba, la casa se reparte en tres recámaras.', 'Madera vinílica gris cálida'],
   ['Una sala para la tele, asomada a cinco metros de vacío.', 'Madera vinílica gris cálida'],
-  ['Cama, escritorio y su propio vestidor.', 'Madera vinílica gris cálida'],
+  ['Cama, escritorio y, al fondo, su propio vestidor.', 'Madera vinílica gris cálida'],
+  ['Colgado, cajones y zapatos a la vista.', 'Madera vinílica gris cálida'],
   ['Negro, blanco y vidrio de piso a techo.', 'Mármol blanco · gresite en regadera'],
   ['La recámara principal mira a la calle desde su balcón.', 'Madera vinílica gris cálida'],
-  ['Todo colgado, todo a la vista.', 'Madera vinílica gris cálida'],
+  ['Todo colgado, todo a la vista, y el baño al fondo.', 'Madera vinílica gris cálida'],
   ['Dos lavabos, una tina y la luz de la calle.', 'Mármol blanco · gresite en regadera'],
   ['Dos sillones para ver pasar la tarde.', 'Adoquín'],
   ['Al fondo, el cuarto que mira al jardín.', 'Madera vinílica gris cálida'],
+  ['Un vestidor compacto en escuadra.', 'Madera vinílica gris cálida'],
   ['Un sillón, un librero y la ventana al jardín.', 'Madera vinílica gris cálida'],
-  ['Un vestidor compacto en escuadra.', 'Encino'],
   ['Regadera de lado a lado y luz alta del norte.', 'Mármol blanco · gresite en regadera']
 ].forEach(([line, piso], i) => Object.assign(ZONES[i], { line, piso }));
 const EXTZ = new Set([0, 1, 2, 16]);
 ZONES.forEach((z, i) => {
   const r = z.rects[0], w = r[2] - r[0], d = r[3] - r[1], [n, a] = z.name.split(' · ');
   z.title = n; z.w = Math.min(w, 12.49); z.d = Math.min(d, 19.93); z.area = a ? a.replace(' m²', '') : (z.w * z.d).toFixed(1);
-  z.plafon = EXTZ.has(i) ? 'cielo abierto' : (i === 12 ? '5.35 m (doble altura)' : (i === PA0 + 7 ? 'losa de la terraza' : '2.55 m'));
+  z.plafon = EXTZ.has(i) ? 'cielo abierto' : (i === 12 ? '5.35 m (doble altura)' : (i === PA0 + 8 ? 'losa de la terraza' : '2.55 m'));
 });
 
 /* ---------- tinta sobre el piso: nombre, área y cotas (se borran al pintarse la zona) ---------- */
@@ -2233,7 +2337,7 @@ function drawPlan(cv, list = PLAN2D, zones = ZONES.slice(0, PA0), title = '01 �
 { const cv = $('endplan2'); cv.width = 900; cv.height = 1320; drawPlan(cv, PA2D, ZONES.slice(PA0), '02 — PLANTA ALTA · ESC 1:100'); }
 
 /* ---------- actualización de la interfaz por cuadro ---------- */
-let navPA = false; const navb = $('navb');
+let navPA = false, shSig = ''; const navb = $('navb');
 const card = $('card'), reti = $('reti'), rmark = $('rmark'), count = $('count'), hero = $('hero'), tblock = $('tblock'), endpage = $('endpage'), endPg = endpage.querySelector('.pg'), endSh = endpage.querySelector('.sh');
 const tmpV = new THREE.Vector3();
 function hud(p) {
@@ -2284,7 +2388,7 @@ const CAPS = [
   ...ZONES.map((z, i) => ({ id: 'z' + i, t: '', d: z.line, nar: true })),
   { id: 'stairs', t: 'A la planta alta', d: 'La misma escalera en U: diecisiete peraltes de 16.5 cm hasta el N.P.T. 2.80.' },
   { id: 'pa', t: 'Planta alta', d: 'N.P.T. 2.80 · sala TV, tres recámaras con vestidor y baño, y balcón a la calle. Otra vez el modelo cortado a 1.20 m.' },
-  { id: 'final', t: 'Planta baja y alta', d: '29 espacios recorridos a la altura de los ojos. Siguiente: la terraza y la azotea.' }
+  { id: 'final', t: 'Planta baja y alta', d: '30 espacios recorridos a la altura de los ojos. Siguiente: la terraza y la azotea.' }
 ].map(c => { const el = document.createElement('div'); el.className = 'cap' + (c.nar ? ' nar' : ''); el.innerHTML = `<b>${c.t}</b><span>${c.d}</span>`; document.body.appendChild(el); return { ...c, el }; });
 
 /* ---------- cámara ---------- */
@@ -2326,7 +2430,7 @@ function apply(p) {
   // en la lámina: luz pareja y sin sombras, como papel; el sol entra conforme se levanta la casa
   const lit = ramp(p, P0 * .45, P_AER);
   hemi.intensity = lerp(2.1, .6, lit); hemi.color.copy(HEMI_PAPER).lerp(HEMI_SKY, lit); sun.intensity = lerp(1.1, 3.6, lit); sun.shadow.intensity = lit;
-  const capO = 1 - ramp(p, P0 * .95, P_AER); capMat.opacity = capO; walls.forEach(w => w.cap && (w.cap.visible = capO > .01));
+  const capO = 1 - ramp(p, P0 * .95, P_AER); capMat.opacity = capO; capMeshes.forEach(c => { c.visible = capO > .01; });
   const lab = 1 - ramp(p, P0 * .34, P0 * .55); planGrp.visible = lab > .01; planGrp.traverse(o => { if (o.material) o.material.opacity = lab; });
   const l1 = ramp(p, P0 * .85, lerp(P0, P_AER, .5)), l2 = ramp(p, P0 * .95, P_AER);
   up1.position.y = (1 - l1) * 9; up2.position.y = (1 - l2) * 9;
@@ -2365,6 +2469,9 @@ function apply(p) {
   }
   if (p < P0 * .3) cap = '';
   CAPS.forEach(c => c.el.classList.toggle('on', c.id === cap));
+  // la sombra del sol solo se recalcula cuando algo que la proyecta se mueve o aparece (losas que suben, plantas, portones)
+  const sig = [up1.visible, up2.visible, paIn.visible, up1.position.y, up2.position.y, garageGate.rotation.x, pedGate.rotation.y].map(v => typeof v === 'number' ? v.toFixed(3) : v).join();
+  if (sig !== shSig) { shSig = sig; renderer.shadowMap.needsUpdate = true; }
   hud(p);
 }
 
@@ -2381,13 +2488,14 @@ if (window.gsap && window.ScrollTrigger && window.Lenis) {
   ScrollTrigger.create({ trigger: '#scroll', start: 'top top', end: 'bottom bottom', onUpdate: s => { pT = s.progress; } });
 } else addEventListener('scroll', readScroll, { passive: true });
 
-const useBloom = !/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+const useBloom = !MOBILE;
 let composer = null;
 let gtao = null;
 if (useBloom) {
   composer = new EffectComposer(renderer); composer.addPass(new RenderPass(scene, camera));
   // oclusión ambiental: rincones, zoclos y contacto de muebles con el piso
   gtao = new GTAOPass(scene, camera, innerWidth, innerHeight);
+  { const ss = gtao.setSize.bind(gtao); gtao.setSize = (w, h) => ss(Math.round(w / 2), Math.round(h / 2)); }   // la oclusión a media resolución: es suave y cuesta la cuarta parte
   gtao.updateGtaoMaterial({ radius: .45, distanceExponent: 1.4, thickness: 1, scale: 1.1, samples: 12 });
   gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 16 });
   gtao.blendIntensity = .9; composer.addPass(gtao);
@@ -2398,13 +2506,34 @@ if (useBloom) {
 }
 addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; renderer.setSize(innerWidth, innerHeight); composer && composer.setSize(innerWidth, innerHeight); });
 camera.aspect = innerWidth / innerHeight;
-renderer.setAnimationLoop(() => {
-  if (typeof window.__forceP === 'number') pS = window.__forceP; else pS += (pT - pS) * .12;
+/* calidad automática: si la máquina no sostiene ~45 fps, baja la resolución y luego apaga la oclusión */
+const QUALITY = [() => setDPR(Math.min(DPR, 1.25)), () => setDPR(1), () => { if (gtao) gtao.enabled = false; }, () => setDPR(.8)];
+let qLvl = 0, qT = [], qLast = 0, qSlow = 0, qHold = performance.now() + 2500;
+function setDPR(d) { DPR = d; renderer.setPixelRatio(d); renderer.setSize(innerWidth, innerHeight); composer && (composer.setPixelRatio(d), composer.setSize(innerWidth, innerHeight)); }
+function governor(now) {
+  const dt = now - qLast; qLast = now;
+  if (document.hidden || dt > 120 || now < qHold || qLvl >= QUALITY.length || typeof window.__forceP === 'number') return;
+  qT.push(dt); if (qT.length < 40) return;
+  const med = qT.sort((a, b) => a - b)[qT.length >> 1]; qT = [];
+  qSlow = med > 22 ? qSlow + 1 : 0;   // dos tandas lentas seguidas: no reacciona a un tirón aislado
+  if (qSlow >= 2) { QUALITY[qLvl++](); qSlow = 0; qHold = now + 1000; }
+}
+// compila de una vez los materiales de lo que aún está oculto (planta alta, lámina 02, marcadores): sin tirones cuando aparecen
+{ const hid = [], tex = new Set(); scene.traverse(o => { if (!o.visible) { hid.push(o); o.visible = true; } if (o.material) Object.values(o.material).forEach(v => v && v.isTexture && tex.add(v)); });
+  renderer.compile(scene, camera); tex.forEach(t => renderer.initTexture(t)); hid.forEach(o => { o.visible = false; }); }
+let lastNow = performance.now();
+renderer.setAnimationLoop(now => {
+  governor(now);
+  // suavizado por tiempo y no por cuadro: con pocos fps la cámara no se queda atrás del scroll
+  const k = 1 - Math.pow(.88, Math.min(100, now - lastNow) / 16.67); lastNow = now;
+  if (typeof window.__forceP === 'number') pS = window.__forceP; else pS += (pT - pS) * k;
   apply(pS); composer ? composer.render() : renderer.render(scene, camera);
 });
 window.__KEYS = KEYS.map(k => ({ p: k.p, type: k.type, z: k.z }));
 // pruebas: dibuja un cuadro en p y devuelve los ms con la GPU sincronizada (sirve aunque la pestaña esté en segundo plano)
 window.__frameMs = p => { const gl = renderer.getContext(), px = new Uint8Array(4), t0 = performance.now(); apply(p); composer ? composer.render() : renderer.render(scene, camera); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); return performance.now() - t0; };
+// pruebas: llamadas de dibujo y triángulos de un cuadro completo en p (sombra, oclusión, color y posproceso)
+window.__info = p => { renderer.info.autoReset = false; renderer.info.reset(); const ms = window.__frameMs(p); const { calls, triangles } = renderer.info.render; renderer.info.autoReset = true; return { ms, calls, triangles, dpr: renderer.getPixelRatio(), gtao: gtao ? gtao.enabled : false }; };
 window.__ready = true;
 </script>
 </body>
