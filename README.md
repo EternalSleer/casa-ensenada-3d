@@ -4,7 +4,8 @@ Landing de scroll que convierte el plano arquitectónico de la casa (ARQ-01 a AR
 
 - `index.html` — la página completa (three.js 0.170 + GSAP ScrollTrigger + Lenis desde CDN, sin build).
 - `geometria.json` — lectura del plano: ejes, niveles, espacios, puertas y decisiones confirmadas.
-- `tex/` — texturas escaneadas (1k) y cielo HDRI de [Poly Haven](https://polyhaven.com), licencia CC0: `laminate_floor_02`, `square_concrete_pavers`, `white_plaster_rough_02`, `rough_linen`, `leafy_grass`, `gravelly_sand`, `oak_veneer_01`, `wood_table_001`, `brown_planks_05` y `kloofendal_48d_partly_cloudy_puresky`.
+- `lintel/code-materials.js` — los materiales escritos en código de [Lintel / Casa Serra](https://github.com/Sam1983Aing/lintel-flat-2d) de Sam Aing, compartidos por su autor con la comunidad: duela, muros, mármol, travertino, concreto, teca, nogal, telas, cuero, metales y agua.
+- `tex/` — lo que queda escaneado, de [Poly Haven](https://polyhaven.com) (CC0): `rough_linen`, `leafy_grass`, `gravelly_sand` y el cielo `kloofendal_48d_partly_cloudy_puresky`.
 
 ## Ver en local
 
