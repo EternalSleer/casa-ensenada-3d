@@ -178,8 +178,23 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 
 window.addEventListener('error', e => { document.getElementById('err').textContent = 'Error: ' + e.message; });
-const LD = { n: 0, t: 0, done: false, t0: performance.now() };
-THREE.DefaultLoadingManager.onProgress = (u, l, t) => { LD.n = l; LD.t = t; };
+// cargador honesto: el porcentaje pondera construcción (55), descargas (15), compilación (15) y ensayo de cuadros (15)
+const LD = { t0: performance.now(), build: 0, n: 0, t: 0, comp: 0, warm: 0, shown: 0, ready: false, done: false, last: performance.now() };
+THREE.DefaultLoadingManager.onProgress = (u, l, t) => { LD.n = Math.max(LD.n, l); LD.t = Math.max(LD.t, t); };
+const LDEL = { pct: document.getElementById('ldPct'), bar: document.getElementById('ldBar'), txt: document.getElementById('ldTxt') };
+function ldDraw() {
+  const now = performance.now(), dt = Math.min(.1, (now - LD.last) / 1000); LD.last = now;
+  const tg = LD.done ? 100 : Math.min(100, 55 * LD.build + 15 * (LD.t ? LD.n / LD.t : 0) + 15 * LD.comp + 15 * LD.warm);
+  const d = tg - LD.shown;
+  if (d > 0) LD.shown += Math.min(d, dt * 60, d * dt * 6 + dt * 4);   // nunca baja, máx. 60 %/s
+  const pct = Math.min(100, Math.floor(LD.shown));
+  LDEL.pct.textContent = pct + '%'; LDEL.bar.style.width = LD.shown.toFixed(1) + '%';
+}
+setInterval(() => { if (!LD.done) ldDraw(); }, 40);
+async function LDstep(campo, valor, rotulo) {
+  LD[campo] = valor; if (rotulo) LDEL.txt.textContent = rotulo; ldDraw();
+  await new Promise(r => { const f = () => { f.d || (f.d = 1, setTimeout(r, 0)); }; requestAnimationFrame(f); setTimeout(f, 80); });
+}
 
 try { await Promise.race([
   Promise.all([document.fonts.load('600 64px "Geist"'), document.fonts.load('400 30px "Geist Mono"'), document.fonts.load('400 60px "Saira Stencil One"')]),
@@ -468,13 +483,18 @@ const mat = {
   carCal: M({ color: 0x9c1e1e, roughness: .4, metalness: .2 }),
   carDark: M({ color: 0x060606, roughness: .9, side: THREE.DoubleSide }),
   carSeat: M({ color: 0xa8967c, roughness: .65 }),
-  tyre: M({ color: 0x151515, roughness: .9 })
+  tyre: M({ color: 0x151515, roughness: .9 }),
+  pebble: M({ color: 0xd9d4ca, roughness: .8 }),   // (antes en el segundo Object.assign: la fachada lo necesita antes)
+  facadeConc: M({ color: 0xcfcac2, roughness: .8 }),
+  laja: M({ color: 0x8a8174, roughness: .9 }),
+  fins: M({ map: texWood, color: 0xc9a27a, roughness: .55 })
 };
 const texDoorP = ctex(256, 512, (g, w, h) => { g.fillStyle = '#f6f5f2'; g.fillRect(0, 0, w, h); for (let k = 0; k < 5; k++) { const y = 30 + k * 92; g.strokeStyle = 'rgba(0,0,0,.18)'; g.lineWidth = 3; g.strokeRect(34, y, w - 68, 78); g.strokeStyle = 'rgba(255,255,255,.9)'; g.lineWidth = 2; g.strokeRect(37, y + 3, w - 74, 72); } });
 mat.doorW = M({ map: texDoorP, roughness: .45 }); mat.casing = M({ color: 0xf7f6f3, roughness: .5 });
 const glassMat = new THREE.MeshStandardMaterial({ color: 0x9dbccb, roughness: .04, metalness: .1, transparent: true, opacity: .2, depthWrite: false, envMapIntensity: 1.6 });
 const capMat = new THREE.MeshBasicMaterial({ color: 0x1c1c1a, transparent: true });
 
+await LDstep('build', 0.04, 'MATERIALES');
 /* ---------- grupos ---------- */
 const planGrp = new THREE.Group(); scene.add(planGrp);      // etiquetas, ejes, cotas
 const plan2 = new THREE.Group(); scene.add(plan2);          // rótulos de la lámina 02 (planta alta)
@@ -579,6 +599,7 @@ function door(grp, x0, x1, hd, t, type, swing, ang = 0) {
   const head = new THREE.Mesh(new THREE.BoxGeometry(w, .04, t + .02), wood ? mat.frame : mat.casing); head.position.set((x0 + x1) / 2, hd - .02, 0); grp.add(head);
 }
 
+await LDstep('build', 0.07, 'TRAZANDO PLANTA BAJA');
 /* ---------- planta baja: pisos ---------- */
 floor(rect(-420, -420, 420, 420), mat.paperFloor, -0.02);   // terreno general: llega más allá de la niebla, sin orilla visible
 floor([[0, 0], [9.03, 0], [9.03, 3.65], [1.43, 3.65], [1.43, 18.21], [0, 18.21]], mat.grass, 0.0);
@@ -639,8 +660,10 @@ wall([5.79, 19.93], [12.49, 19.93], { base: 2.1, h: H1 - 2.1, t: .2, m: mat.wall
   box(.02, .9, 3.56, 9.2, 10.04, 0, st, scene).visible = false;
 }
 
+await LDstep('build', 0.11, 'LEVANTANDO PLANTA ALTA');
 /* ---------- losa N.P.T. 2.80 y planta alta (envolvente) ---------- */
-slab([[1.43, 8.26], [7.56, 8.26], [7.56, 0], [12.49, 0], [12.49, 19.93], [5.79, 19.93], [5.79, 18.21], [1.43, 18.21]],
+// el canto de la losa llega al paño exterior del muro (10 cm afuera del eje)
+slab([[1.43, 8.26], [7.56, 8.26], [7.56, 3.65], [7.485, 3.65], [7.485, -0.10], [12.59, -0.10], [12.59, 20.03], [5.69, 20.03], [5.69, 18.31], [1.33, 18.31], [1.33, 8.26]],
   [rect(9.1, 8.36, 12.39, 11.72)], H1, LOSA, mat.wall, up1);
 // envolvente de planta alta según ARQ-02: el bloque de la recámara 3 arranca en el eje D" (7.56)
 const UP = { base: F1, h: H2, t: EXT, parent: up1, cap: false };
@@ -686,10 +709,11 @@ wall([8.71, 12.80], [9.21, 12.80], PAI); wall([8.71, 12.80], [8.71, 13.84], PAI)
   for (let j = 0; j < 9; j++) box(t2 + .02, .06, 1.7, 11.44 - t2 * (j + .5), 9.11, F1 + (9 + j) * rh - .06, st, paIn);
 }
 
+await LDstep('build', 0.15, 'LEVANTANDO PLANTA ALTA');
 /* ---------- losa N.P.T. 5.60: terraza (ARQ-03) y azotea N.P.T. 8.20 ---------- */
 // huecos: escalera y vaso del jacuzzi (la losa peraltada lo recibe sin bajar el plafón de la recámara 3)
 const JAC = rect(8.12, 4.34, 9.62, 5.81);
-slab([[1.43, 3.65], [7.56, 3.65], [7.56, 0], [12.49, 0], [12.49, 20.69], [4.79, 20.69], [4.79, 18.21], [1.43, 18.21]],
+slab([[1.33, 3.55], [7.485, 3.55], [7.485, -0.10], [12.59, -0.10], [12.59, 20.69], [4.79, 20.69], [4.79, 18.31], [1.33, 18.31]],
   [rect(9.1, 8.36, 12.39, 11.72), JAC], F2 - LOSA, LOSA, mat.wall, up2);
 const up3 = new THREE.Group(); up2.add(up3);   // losa de azotea: se oculta cuando la cámara pasa por encima
 const perg = new THREE.Group(); up2.add(perg);  // vigas y listones de la pérgola: fuera de la lámina 03 (su sombra pintaría el piso)
@@ -734,18 +758,74 @@ slab([[5.57, 8.04], [12.59, 8.04], [12.59, 16.57], [7.35, 16.57], [7.35, 15.03],
   for (let y = 3.88; y < 5.4; y += .1) box(.06, 2.41, .04, 7.19, y, F2, mat.wood, up2);
 }
 
+await LDstep('build', 0.19, 'LEVANTANDO TERRAZA');
+/* ---------- fachada ---------- */
+// barda de laja con jardinera, vigas de concreto aparente, caja blanca con celosía de madera, balcón remetido y volumen de concreto con ventana enmarcada
+const fachPB = new THREE.Group(); scene.add(fachPB);
+const fachPA = new THREE.Group(); up1.add(fachPA);
+const fachT = new THREE.Group(); up2.add(fachT);
+{
+  // planta baja
+  box(5.85, 2.10, .05, 2.925, 20.055, 0, mat.laja, fachPB);              // piedra seca sobre la barda
+  box(5.95, .46, .30, 2.925, 19.98, 2.10, mat.facadeConc, fachPB);       // remate de concreto (sube hasta 2.56: cubre el canto blanco de la barda de 2.55)
+  box(3.87, .70, .06, 7.725, 20.06, 2.10, mat.facadeConc, fachPB);       // viga sobre acceso y cochera (cubre también el canto de la losa)
+  box(2.93, .45, .06, 11.125, 20.06, 2.10, mat.facadeConc, fachPB);      // viga bajo la caja blanca
+  box(.22, 2.10, .24, 12.49, 19.94, 0, mat.facadeConc, fachPB);          // pilar de esquina (1 cm más ancho que el muro: sin coplanares)
+  box(.18, 2.10, .24, 6.95, 19.94, 0, mat.facadeConc, fachPB);           // pilar entre portones
+  box(.04, 2.55, 5.87, 6.875, 16.895, 0, mat.laja, fachPB);              // piedra del muro del andador
+  box(5.20, .45, .50, 2.90, 20.33, 0, mat.facadeConc, fachPB);           // jardinera de calle
+  box(5.08, .02, .42, 2.90, 20.33, .43, mat.pebble, fachPB);
+  box(6.70, .028, .03, 9.19, 20.075, 2.075, mat.led, fachPB);            // LED bajo la viga
+  box(5.08, .028, .03, 2.90, 20.10, .45, mat.led, fachPB);               // LED que baña la laja sobre la jardinera
+  box(.03, .03, 5.80, 6.83, 16.90, .005, mat.led, fachPB);               // LED rasante del andador
+  // planta alta
+  box(.20, 2.80, .66, 12.49, 20.36, 2.55, mat.wall, fachPA);             // caja blanca volada: poste derecho
+  box(.20, 2.80, .76, 9.76, 20.31, 2.55, mat.wall, fachPA);              // poste izquierdo
+  box(2.53, .25, .76, 11.125, 20.31, 2.55, mat.wall, fachPA);            // plafón de la caja
+  box(2.53, 2.55, .02, 11.125, 20.27, 2.80, mat.frame, fachPA);          // fondo oscuro mate de la celosía (tapa también la ventana: se lee como ranura, no como parche blanco)
+  for (let i = 0; i < 17; i++) box(.05, 2.55, .12, 9.97 + i * .145, 20.36, 2.80, mat.fins, fachPA);   // celosía vertical
+  box(2.53, .04, .04, 11.125, 20.29, 2.80, mat.frame, fachPA); box(2.53, .04, .04, 11.125, 20.29, 5.31, mat.frame, fachPA);
+  box(2.40, .028, .03, 11.125, 20.60, 2.525, mat.led, fachPA);           // LED del plafón
+  box(4.07, .04, .06, 7.825, 19.93, 3.80, mat.frame, fachPA);            // tapa del barandal del balcón
+  box(4.07, .03, 1.90, 7.825, 19.70, 5.32, mat.fins, fachPA);            // plafón de madera bajo el volado de la terraza
+  box(4.07, .028, .03, 7.825, 20.43, 5.292, mat.led, fachPA);            // LED bajo el plafón de madera
+  box(.32, 3.25, .04, 1.49, 18.33, 2.10, mat.facadeConc, fachPA);        // volumen de concreto alrededor de la ventana del vestidor 2
+  box(1.40, 3.25, .04, 5.09, 18.33, 2.10, mat.facadeConc, fachPA);
+  box(2.74, 1.70, .04, 3.02, 18.33, 2.10, mat.facadeConc, fachPA);
+  box(2.74, .35, .04, 3.02, 18.33, 5.00, mat.facadeConc, fachPA);
+  box(2.86, .06, .25, 3.02, 18.475, 5.00, mat.frame, fachPA);            // marco de acero negro de 25 cm de fondo
+  box(2.86, .06, .25, 3.02, 18.475, 3.74, mat.frame, fachPA);
+  box(.06, 1.32, .25, 1.62, 18.475, 3.74, mat.frame, fachPA);
+  box(.06, 1.32, .25, 4.42, 18.475, 3.74, mat.frame, fachPA);
+  // terraza
+  box(7.80, .20, .20, 8.69, 20.59, 5.15, mat.wall, fachT);               // faldón blanco
+  box(7.60, .028, .03, 8.69, 20.51, 5.125, mat.led, fachT);              // LED lineal
+  box(3.46, 1.25, .04, 3.06, 18.33, 5.35, mat.facadeConc, fachT);        // losa y pretil del volumen de concreto
+  box(7.70, .04, .06, 8.64, 20.69, 6.60, mat.frame, fachT);              // tapa del barandal de vidrio
+}
+
 /* ---------- portones ---------- */
+// portón de cochera y puerta peatonal: bastidor negro y listones de madera (dos mallas cada uno)
+const _gb = (w, h, d, x, y, z) => new THREE.BoxGeometry(w, h, d).translate(x, y, z);
+function gateMeshes(grp, frameG, finG, backG) {
+  [[frameG, mat.frame], [finG, mat.fins], [backG, mat.frame]].forEach(([a, m]) => { const me = new THREE.Mesh(mergeGeometries(a), m); me.castShadow = me.receiveShadow = true; grp.add(me); });
+}
 const garageGate = new THREE.Group(); { const p = P(9.755, 19.95); garageGate.position.set(p.x, 2.1, p.z); }
-{ const g = new THREE.Mesh(new THREE.BoxGeometry(5.45, 2.08, .06), mat.woodClad); g.geometry.translate(0, -1.04, 0); g.castShadow = g.receiveShadow = true; garageGate.add(g);
-  for (let i = 1; i < 8; i++) { const r = new THREE.Mesh(new THREE.BoxGeometry(5.45, .012, .07), mat.frame); r.position.set(0, -i * .26, 0); garageGate.add(r); } }
+{ const W = 5.45, H = 2.08, f = .05, fr = [_gb(W, f, .06, 0, -f / 2, 0), _gb(W, f, .06, 0, -H + f / 2, 0), _gb(f, H, .06, -W / 2 + f / 2, -H / 2, 0), _gb(f, H, .06, W / 2 - f / 2, -H / 2, 0)], fi = [];
+  const inner = H - 2 * f, st = (inner - .09) / 15;
+  for (let i = 0; i < 16; i++) fi.push(_gb(5.35, .09, .035, 0, -f - .045 - i * st, 0));
+  gateMeshes(garageGate, fr, fi, [_gb(W - 2 * f, H - 2 * f, .01, 0, -H / 2, -.0225)]); }
 riseGrp.add(garageGate);
 const pedGate = new THREE.Group(); { const p = P(6.85, 19.95); pedGate.position.set(p.x, 0, p.z); }
-{ const g = new THREE.Mesh(new THREE.BoxGeometry(.97, 2.08, .05), mat.frame); g.geometry.translate(-.485, 1.04, 0); g.castShadow = true; pedGate.add(g);
+{ const W = .97, H = 2.08, f = .05, fr = [_gb(W, f, .05, -W / 2, f / 2, 0), _gb(W, f, .05, -W / 2, H - f / 2, 0), _gb(f, H, .05, -f / 2, H / 2, 0), _gb(f, H, .05, -W + f / 2, H / 2, 0)], fi = [];
+  for (let i = 0; i < 7; i++) fi.push(_gb(.05, H - 2 * f, .035, -W / 2 + (i - 3) * .12, H / 2, 0));
+  gateMeshes(pedGate, fr, fi, [_gb(W - 2 * f, H - 2 * f, .01, -W / 2, H / 2, -.0225)]);
   const h = new THREE.Mesh(new THREE.BoxGeometry(.03, .5, .08), mat.steel); h.position.set(-.88, 1.05, 0); pedGate.add(h); }
 riseGrp.add(pedGate);
-box(.02, .16, .08, 5.72, 20.06, 1.35, mat.dark); cyl(.02, .01, 5.72, 20.1, 1.4, mat.ledBlue, riseGrp, 12).rotation.x = Math.PI / 2;   // videoportero de barda
+box(.02, .16, .08, 5.72, 20.10, 1.35, mat.dark); cyl(.02, .01, 5.72, 20.14, 1.4, mat.ledBlue, riseGrp, 12).rotation.x = Math.PI / 2;   // videoportero de barda
 
 
+await LDstep('build', 0.22, 'AMUEBLANDO');
 /* ---------- mobiliario detallado (posiciones tomadas del plano) ---------- */
 let _sd = 1983;
 const rnd = () => { _sd = _sd + 0x6D2B79F5 | 0; let t = Math.imul(_sd ^ _sd >>> 15, 1 | _sd); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
@@ -891,7 +971,6 @@ Object.assign(mat, {
   terracotta: M({ color: 0xb06a46, roughness: .9 }),
   concPot: M({ map: texConc, color: 0xd6d1c8, roughness: .9 }),
   soil: M({ color: 0x3b2e23, roughness: 1 }),
-  pebble: M({ color: 0xd9d4ca, roughness: .8 }),
   agave: M({ color: 0x86a596, roughness: .55 }),
   grassTuft: M({ color: 0xa3a56a, roughness: .9 }),
   palmLeaf: M({ color: 0x5c8441, roughness: .8, side: DS }),
@@ -1123,6 +1202,7 @@ const kChannel = (w, h) => {
   g.rotateX(-Math.PI / 2); g.translate(0, .04, 0); return kitUv(g);
 };
 
+await LDstep('build', 0.26, 'AMUEBLANDO');
 /* ---------- helpers compartidos del mobiliario armado con Lintel (antes vivían en el bloque de planta alta; ahora los usan también planta baja y terraza) ---------- */
 // ---- piezas de los dormitorios de visita (Lintel, staging.js: lounge 335, chair y lampOn 3139, mesa lateral 4090, banca de la master 4019, librero 3200) ----
 // Se dibujan en el marco local del kitFrame en curso (x a lo ancho, y al frente, z altura) y se llaman dentro de un kitThing.
@@ -1667,6 +1747,7 @@ const kTvStand = (X, ND, o = {}) => {   // o: tv75 (pantalla de 75"), body, fron
 // lámpara de pie de la sala de medios de Lintel (staging.js 3151): base negra, varilla de latón y pantalla de lino
 const kFloorLamp = (x, y) => { kcyl(KB, 'black', x, y, 0, .025, .17, .17, 24); kcyl(KB, 'brass', x, y, .025, 1.48, .012, .012, 12); kcyl(KD, 'shade', x, y, 1.44, 1.76, .21, .17, 28); };
 
+await LDstep('build', 0.3, 'AMUEBLANDO');
 /* ---------- piezas de la sala y el comedor de planta baja (Lintel: cortina 317, pendant 249, living 1683–2029, comedor 2469–2780) ---------- */
 // lote que escala todo lo que se le agrega (la silla de Lintel mide 52.5 cm de asiento para una mesa de 88: la nuestra es de 76)
 const kScaled = (bt, S) => ({ add: (m, g, mtx, e) => bt.add(m, g, new THREE.Matrix4().makeScale(S, S, S).multiply(mtx || new THREE.Matrix4()), e) });
@@ -2229,6 +2310,7 @@ function counterChair(x, y) {
   downlight(3.3, 9.3); downlight(4.4, 10.6);
 }
 
+await LDstep('build', 0.34, 'AMUEBLANDO');
 /* ---------- piezas nuevas del juego para la cocina, la alacena y el lavado (Lintel, staging.js 2029–3115 y 520–600) ---------- */
 // caja plana sin bisel y sin contorno de tinta (herrajes, rejillas, tiras de luz: lo que no se ve de cerca)
 const kPlain = (bt, m, x0, y0, x1, y1, z0, z1) => bt.add(m, new THREE.BoxGeometry(x1 - x0, z1 - z0, y1 - y0), KMX((x0 + x1) / 2, (z0 + z1) / 2, (y0 + y1) / 2));
@@ -2575,6 +2657,7 @@ const kFillShelf = (bt, a, b, z, hh, seed, yc) => {
   downlight(10.8, 1.3);
 }
 
+await LDstep('build', 0.38, 'AMUEBLANDO');
 /* ---------- piezas del estudio, los baños, el cuarto de servidores y el vestíbulo (Lintel: estudio 3115–3406, entrada 1320–1683, baño 5078–5659) ---------- */
 // pantalla curva: media luna de cilindro extruida (el cuerpo del monitor) y el vidrio doblado encima; el frente mira a +y y los bordes se acercan al usuario
 const kCrescent = (w, h, r, t, n = 24) => {
@@ -3095,6 +3178,7 @@ const kTowelBar = (x, y, rot, len, z) => kitFrame(x, y, rot, () => kitThing(() =
   kitFrame(7.4, 12.85, 0, () => kitThing(() => kPendant(KB, 0, 0, H1, 1.8, .16, 'dome')));
 }
 
+await LDstep('build', 0.42, 'AMUEBLANDO');
 /* ---------- exterior, cochera y herramientas con el juego de Lintel (patio: staging.js 3406–3703; frente y cochera: 1077–1320) ---------- */
 const K_PEB = new THREE.IcosahedronGeometry(1, 1);
 const kPeb = (bt, m, x, y, z, r, sy, rot, sx) => bt.add(m, K_PEB, KMX(x, z, y, 0, rot || 0, 0, r * (sx || 1.1), r * (sy || .55), r));   // piedra de río achatada
@@ -3644,11 +3728,11 @@ kBike(12.39, 17.3, -PI / 2);      // bicicleta colgada
   kPlanter(3.07, 18.5, 3.3, .36, .47, 0, 31, 30);
   // franja de 1.72 m: solo la jardinera con tres agaves, pasto y un olivo en la esquina
   [-1.1, 0, 1.1].forEach((x, k) => agave(g, x, .45, 0, k === 1 ? 1.15 : .95));
-  olive(.8, 19.25, 1.15);
+  olive(.8, 19.25, 1.4);
   [1.5, 3.2, 4.9].forEach(x => kWallBar(x, 19.84, PI));
   // luminarias de piso en el andador
   [15.2, 16.8, 18.4].forEach(y => kBollard(6.80, y, .55));
-  kMailbox(5.6, 20.08, 0);
+  kMailbox(5.6, 20.11, 0);
 }
 
 /* ================== JARDÍN ================== */
@@ -3732,6 +3816,7 @@ walls.forEach(w => w.grp.traverse(o => {
     const l = new THREE.Mesh(new THREE.BoxGeometry(.13, .016, .016), mat.black); l.position.set(x + (hr ? .055 : -.055), 1.02, s * .045); o.parent.add(l); });
 }));
 
+await LDstep('build', 0.46, 'AMUEBLANDO');
 /* ---------- horneado: une cada material en una sola malla (menos llamadas de dibujo) ---------- */
 // copia de la geometría lista para unir: atributos comunes, en el espacio de `rel` y siempre indexada (sin índice se triplican los vértices)
 const _rel = new THREE.Matrix4();
@@ -4432,6 +4517,7 @@ GY = F1; GP = paFurn;
   downlight(9.0, .9); downlight(11.3, .9);
 }
 GY = 0; GP = null;
+await LDstep('build', .52, 'AMUEBLANDO');
 bake(paFurn);
 // La semilla de rnd() queda donde la dejaba la planta alta anterior (closetRun consumía llamadas): así plantas, pastos, botellas, cajas y lienzos
 // de la planta baja restante y la terraza salen igual que antes. Los cuartos nuevos de planta alta usan kRng propio y no dependen de este valor.
@@ -4568,6 +4654,7 @@ GY = F2; GP = tFurn;
   { const c = G(8.62, 15.18, -PI / 2); rb(c, .45, 1.0, .5, 0, 0, 0, mat.steelB, .01, 2); [.2, .45, .7].forEach(h => bx(c, .4, .005, .01, 0, h, .255, mat.black)); }
 }
 GY = 0; GP = null;
+await LDstep('build', .57, 'AMUEBLANDO');
 bake(tFurn);
 
 texStoneWall.repeat.set(1.5, 2.1);
@@ -4578,6 +4665,7 @@ box(.02, .16, .07, 5.9, 14.25, 1.32, mat.dark); cyl(.018, .008, 5.912, 14.25, 1.
 [15.0, 16.9, 18.8].forEach(y => box(3.0, .02, .06, 9.75, y, H1 - .03, mat.led));
 
 
+await LDstep('build', 0.62, 'MATERIALES');
 /* ---------- texturas escaneadas (Poly Haven, CC0) ---------- */
 const TL = new THREE.TextureLoader();
 // suaviza la foto: la mezcla hacia su color promedio para bajar el contraste (soft 0 = sin cambio, 1 = color liso)
@@ -4641,6 +4729,7 @@ const texPolish = ctex(1024, 1024, (g, w, h) => {
 }, [1 / 3, 1 / 3]);
 Object.assign(mat.conc, { map: texPolish, roughness: .3, needsUpdate: true }); mat.conc.color.setHex(0xffffff);
 
+await LDstep('build', 0.68, 'MATERIALES');
 /* ---------- entorno: cielo, cerros y mar ---------- */
 const backdrop = new THREE.Group(); scene.add(backdrop); backdrop.visible = false;
 const skyTex = TL.load('tex/sky.jpg'); skyTex.colorSpace = THREE.SRGBColorSpace;
@@ -4750,13 +4839,14 @@ function swings(list, parent, y) {
 }
 swings(PLAN2D, planGrp, .04); swings(PA2D, plan2, 0); swings(T2D, plan3, 0);
 
+await LDstep('build', 0.74, 'MATERIALES');
 /* ---------- tramas del dibujo: mientras una superficie es papel, su trama dice de qué está hecha ----------
    1 concreto (juntas de cimbra en muros), 2 losetas y piedra (juntas cuatrapeadas), 3 madera (vetas), 4 vidrio (diagonales), 5 agua (ondas), 6 pasto y grava (puntos) */
-[[1, [mat.fence, mat.concPot]], [2, [mat.paver, mat.paverL, mat.marble, mat.hex, mat.bathTile, mat.subW]], [3, [mat.wood, mat.woodClad, mat.walnut, mat.oakW, mat.deck, mat.tile, mat.plank, mat.oak]],
+[[1, [mat.fence, mat.concPot, mat.facadeConc]], [2, [mat.paver, mat.paverL, mat.marble, mat.hex, mat.bathTile, mat.subW, mat.laja]], [3, [mat.wood, mat.woodClad, mat.walnut, mat.oakW, mat.deck, mat.tile, mat.plank, mat.oak, mat.fins]],
  [4, [mat.glassG]], [5, [mat.water]], [6, [mat.grass, mat.pebble]]].forEach(([h, list]) => list.forEach(m => { if (m) { m.defines = { ...(m.defines || {}), HATCH: h }; m.needsUpdate = true; } }));
 
 /* ---------- poché: muros, puertas y marcos a dos caras para pintar el corte ---------- */
-[mat.wall, mat.fence, mat.woodClad, mat.frame, mat.casing, mat.doorW].forEach(m => {
+[mat.wall, mat.fence, mat.woodClad, mat.frame, mat.casing, mat.doorW, mat.facadeConc, mat.laja].forEach(m => {
   m.side = THREE.DoubleSide; m.shadowSide = THREE.BackSide; m.defines = { ...(m.defines || {}), POCHE: '' }; m.needsUpdate = true;
 });
 
@@ -4770,9 +4860,11 @@ swings(PLAN2D, planGrp, .04); swings(PA2D, plan2, 0); swings(T2D, plan3, 0);
   riseGrp.traverse(add);
   up1.traverse(add);   // planta alta: envolvente, muros interiores y escalera a la terraza
   up2.traverse(add);   // terraza: pretiles, volumen, pérgola y azotea
+  fachPB.traverse(add);   // fachada de planta baja (la de planta alta y terraza va en up1/up2)
   scene.children.forEach(c => { if (c.isMesh && c.geometry.type === 'BoxGeometry') add(c); });
 }
 
+await LDstep('build', 0.79, 'UNIENDO GEOMETRÍA');
 /* ---------- unión de lo estático: muros, ventanas, puertas, losas y contornos en pocas mallas por material ----------
    cada pieza suelta era una llamada de dibujo en la sombra, en la oclusión y en el color (más de 2,600 por cuadro) */
 const capMeshes = [];
@@ -4813,7 +4905,7 @@ function mergeStatic(root, items, skip = []) {
     root.add(me);
   });
 }
-mergeStatic(scene, [...walls.filter(w => w.parent === scene).map(w => w.grp), ...scene.children.filter(c => c.isMesh && c !== skyDome)]);
+mergeStatic(scene, [...walls.filter(w => w.parent === scene).map(w => w.grp), ...scene.children.filter(c => c.isMesh && c !== skyDome), fachPB]);
 mergeStatic(riseGrp, riseGrp.children, [furn, garageGate, pedGate, flames]);
 mergeStatic(paIn, paIn.children, [paFurn]);
 mergeStatic(up1, up1.children, [paIn]);
@@ -4821,6 +4913,7 @@ mergeStatic(up3, up3.children);
 mergeStatic(perg, perg.children);
 mergeStatic(up2, up2.children, [tFurn, up3, perg]);
 
+await LDstep('build', 0.85, 'UNIENDO GEOMETRÍA');
 /* ---------- materiales en código: la biblioteca de Lintel (lintel/code-materials.js) ----------
    Cada material es una regla y no una foto: una altura propia convertida en relieve, una rugosidad que cambia sobre la
    superficie y detalle que se apaga antes de ser más chico que dos pixeles. El adaptador los monta sobre sw(): siguen
@@ -4830,9 +4923,10 @@ mergeStatic(up2, up2.children, [tFurn, up3, perg]);
     ['tile', 'oak'], ['wall', 'plaster'], ['marble', 'marbleKitchen'], ['paver', 'travP'], ['paverL', 'travP'], ['conc', 'concFloor'],
     ['deck', 'teak'], ['fence', 'concrete'], ['fenceL', 'limewash'], ['woodClad', 'oakDoor'], ['walnut', 'walnut'], ['oakW', 'cabinet'], ['quartzW', 'quartz'],
     ['steel', 'steel'], ['steelB', 'steel'], ['chrome', 'steel'], ['brass', 'brass'], ['linen', 'cotton'], ['linen2', 'oat'], ['sofaGrey', 'sofaWool'],
-    ['velvet', 'oliveVelvet'], ['leather', 'leather'], ['cognac', 'leather'], ['rattan', 'rattan'], ['water', 'water'], ['ceramic', 'tubStone']
+    ['velvet', 'oliveVelvet'], ['leather', 'leather'], ['cognac', 'leather'], ['rattan', 'rattan'], ['water', 'water'], ['ceramic', 'tubStone'],
+    ['facadeConc', 'concreteLight'], ['laja', 'drystoneFine'], ['fins', 'teakHoney']
   ];
-  const swap = new Map(), POCHE_K = new Set(['wall', 'fence', 'woodClad']);
+  const swap = new Map(), POCHE_K = new Set(['wall', 'fence', 'woodClad', 'facadeConc', 'laja']);
   SWAP.forEach(([k, code]) => {
     const old = mat[k]; if (!old || !CM.has(code)) return;
     const nm = CM.build(code, old);
@@ -4869,6 +4963,7 @@ LIDS.forEach((list, root) => {
   const me = new THREE.Mesh(g, lidMat); me.frustumCulled = false; me.raycast = () => {}; me.userData.noEdge = true; root.add(me);
 });
 
+await LDstep('build', 0.89, 'MATERIALES');
 /* ---------- zonas del recorrido (coordenadas de plano: [x, altura, y]) ---------- */
 const ZONES = [
   { name: 'Patio frontal', desc: 'Jardinera de concreto con tres agaves frente al estudio, pasto y un olivo en la esquina.',
@@ -5046,6 +5141,7 @@ ZONES.push(
 );
 ZONES.forEach(z => { z.y0 = z.y0 ?? 0; });
 
+await LDstep('build', 0.94, 'MATERIALES');
 /* ---------- guion de cámara ---------- */
 const KEYS = []; let UU = 0;
 const W3 = a => new THREE.Vector3(a[0] - CX, a[1], a[2] - CZ);
@@ -5053,8 +5149,9 @@ function key(pos, tgt, fov, dur, info = {}) { UU += dur; KEYS.push({ u: UU, pos:
 const drift = (p, t, k = .06) => [p[0] + (t[0] - p[0]) * k, p[1], p[2] + (t[2] - p[2]) * k];
 UU = 10; KEYS.push({ u: 10, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), fov: 30, type: 'auto' });
 key([11.2, 12, 40], [6.2, 3, 16], 38, 3, { type: 'aerial' });
-key([6.37, 1.6, 26.5], [6.37, 1.9, 18], 46, 3, { type: 'street' });
-key([6.37, 1.6, 25.6], [6.37, 2.0, 18], 48, 3.5, { type: 'streetHold' });
+key([7.0, 1.65, 31.0], [7.4, 3.9, 19.9], 50, 3, { type: 'street' });
+key([7.0, 1.65, 29.8], [7.2, 3.6, 19.9], 50, 3.5, { type: 'streetHold' });
+key([6.37, 1.6, 25.6], [6.37, 2.0, 18], 48, 2.5, { type: 'approach' });
 const rects = [];
 const posOf = k => [k.pos.x + CX, k.pos.y, k.pos.z + CZ];
 // un paso: dura según la distancia y mira hacia donde se camina (2.5 m más adelante, un poco abajo)
@@ -5131,7 +5228,7 @@ UU += 4.2; KEYS.push({ u: UU, s: 0, pos: new THREE.Vector3(), tgt: new THREE.Vec
 UU += 3.0; KEYS.push({ u: UU, s: 0, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), fov: 30, type: 'curl' });     // la hoja regresa a la mesa
 KEYS.forEach(k => k.p = k.u / UU);
 const kIdx = t => KEYS.findIndex(k => k.type === t);
-const P0 = KEYS[0].p, P_AER = KEYS[kIdx('aerial')].p, P_ST = KEYS[kIdx('street')].p, P_STH = KEYS[kIdx('streetHold')].p, P_IN = KEYS[kIdx('streetHold') + 1].p, P_CURL0 = KEYS[kIdx('curl') - 1].p, P_ROLL0 = KEYS[kIdx('roll') - 1].p, P_ROLL1 = KEYS[kIdx('roll')].p;
+const P0 = KEYS[0].p, P_AER = KEYS[kIdx('aerial')].p, P_ST = KEYS[kIdx('street')].p, P_STH = KEYS[kIdx('streetHold')].p, P_IN = KEYS[kIdx('approach') + 1].p, P_CURL0 = KEYS[kIdx('curl') - 1].p, P_ROLL0 = KEYS[kIdx('roll') - 1].p, P_ROLL1 = KEYS[kIdx('roll')].p;
 // planta alta: desde el pie de la escalera; la lámina 02 entre la llegada y el primer espacio
 const P_PA = KEYS[K_PA].p, P_SH0 = KEYS[kIdx('arrive')].p, P_SH1 = KEYS[kIdx('sheet')].p, P_SH2 = KEYS[kIdx('sheetHold')].p, P_SH3 = KEYS[kIdx('sheetHold') + 1].p;
 // terraza: desde el pie de la escalera de la planta alta; la lámina 03 entre la llegada y el vestíbulo
@@ -5320,10 +5417,8 @@ let unroll = NODESK ? 1 : 0, unrollT0 = 0, ptrX = 0, ptrY = 0;
 addEventListener('pointermove', e => { ptrX = e.clientX / innerWidth - .5; ptrY = e.clientY / innerHeight - .5; });
 function loaderTick() {
   if (LD.done) return;
-  const tex = LD.t ? LD.n / LD.t : 0, el = performance.now() - LD.t0;
-  const pct = Math.min(100, Math.round(55 + 45 * tex));
-  $('ldPct').textContent = pct + '%'; $('ldBar').style.width = pct + '%';
-  if (tex >= 1 || el > 9000) { LD.done = true; $('loader').classList.add('off'); unrollT0 = performance.now() + 350; }
+  ldDraw();
+  if ((LD.ready && LD.shown >= 99.5) || performance.now() - LD.t0 > 30000) { LD.done = true; ldDraw(); $('loader').classList.add('off'); unrollT0 = performance.now() + 350; }
 }
 function hud(p) {
   NODESK = innerWidth < 760;
@@ -5370,7 +5465,7 @@ function hud(p) {
   // portada
   const ho = 1 - ramp(p, P0 * .03, P0 * .13); todEl.style.opacity = 1 - ho; todEl.style.pointerEvents = ho < .5 ? 'auto' : 'none'; hero.style.opacity = ho; tblock.style.opacity = ho; hero.style.visibility = tblock.style.visibility = ho > .01 ? 'visible' : 'hidden';
   // tinta del piso, cotas y marcadores
-  inkGrp.visible = SEG.i >= 0 && p > P_STH && !(p > P_SH0 && p < P_SH3) && !(p > P_TS0 && p < P_TS3);   // en las láminas 02 y 03 mandan sus rótulos
+  inkGrp.visible = SEG.i >= 0 && p > P_IN && !(p > P_SH0 && p < P_SH3) && !(p > P_TS0 && p < P_TS3);   // en las láminas 02 y 03 mandan sus rótulos
   // cada rótulo de piso aparece hasta llegar a su planta: si no, flota sobre la planta de abajo en las vistas aéreas
   const yLv = p >= P_T ? F2 : p >= P_PA ? F1 : 0; ZONES.forEach(z => { z.ink.visible = z.y0 <= yLv; });
   const tt = performance.now() / 1000;
@@ -5399,7 +5494,7 @@ const CAPS = [
   { id: 'plan', t: 'Planta baja', d: 'Esc. 1:100 · terreno de 12.49 × 19.93 m. El plano no es una imagen: es el modelo 3D visto desde arriba con un lente muy largo.' },
   { id: 'walls', t: 'Los muros se levantan', d: 'Altura libre de 2.55 m en planta baja; la sala sube a doble altura hasta 5.35 m.' },
   { id: 'levels', t: 'Tres niveles y terraza', d: 'Planta alta a N.P.T. 2.80 con tres recámaras; terraza a 5.60 con asador, bar y jacuzzi; azotea a 8.20.' },
-  { id: 'street', t: 'Barda y portón eléctrico', d: 'Barda al pie del terreno con <em>portón eléctrico</em> para dos autos y acceso peatonal con <em>videoportero</em>.' },
+  { id: 'street', t: 'Fachada a la calle', d: 'Barda de <em>piedra seca</em> con jardinera, <em>portón de listones</em> para dos autos, acceso peatonal con videoportero y vigas de concreto aparente bajo la caja blanca y su celosía.' },
   ...ZONES.map((z, i) => ({ id: 'z' + i, t: '', d: z.line, nar: true })),
   { id: 'stairs', t: 'A la planta alta', d: 'La misma escalera en U: diecisiete peraltes de 16.5 cm hasta el N.P.T. 2.80.' },
   { id: 'stairsT', t: 'A la terraza', d: 'Otra vez la escalera en U: diecisiete peraltes más hasta el N.P.T. 5.60.' },
@@ -5478,11 +5573,13 @@ function apply(p) {
   dust.material.uniforms.uOn.value = walkK * lerp(1, .35, clamp(LOOK.el / 60)); dust.material.uniforms.uPx.value = renderer.getPixelRatio() * innerHeight / 900; dust.visible = walkK > .01;
   const aboveK = Math.max(1 - ramp(p, P_ST, P_STH), sh2, sh3, ramp(p, KEYS[kIdx('final') - 1].p, P_FIN));
   const sEl = lerp(LOOK.el, Math.max(LOOK.el, 58), aboveK);
-  sun.position.copy(sunDirOf(LOOK.az, sEl)).multiplyScalar(34);
+  // de frente a la fachada: si el sol de la hora queda detrás de la casa (sin(az) < 0), se refleja hacia la calle mientras se ve desde afuera
+  const streetK = ramp(p, P_AER, P_ST) * (1 - ramp(p, P_STH, P_IN)), AZ0 = Math.sin(LOOK.az * Math.PI / 180) < 0 ? lerp(LOOK.az, 360 - LOOK.az, streetK) : LOOK.az, AZ = AZ0 === LOOK.az ? AZ0 : Math.round(AZ0 / 2) * 2;   // redondeado a 2° mientras se refleja: la firma de la sombra no cambia cada cuadro
+  sun.position.copy(sunDirOf(AZ, sEl)).multiplyScalar(34);
   hemi.intensity = lerp(2.1, LOOK.hemi, lit); hemi.color.copy(HEMI_PAPER).lerp(LOOK.hemiCol, lit); hemi.groundColor.set(0xb9ad96).lerp(LOOK.ground, lit);
   sun.intensity = lerp(1.1, LOOK.sun, lit); sun.color.copy(SUN_PAPER).lerp(LOOK.sunCol, lit); sun.shadow.intensity = lit;
   renderer.toneMappingExposure = lerp(1.12, LOOK.exp, lit); scene.environmentIntensity = lerp(.55, LOOK.env, lit);
-  scene.environmentRotation.y = (35 - LOOK.az) * Math.PI / 180; skyDome.rotation.y = (215 - LOOK.az) * Math.PI / 180;
+  scene.environmentRotation.y = (35 - AZ) * Math.PI / 180; skyDome.rotation.y = (215 - LOOK.az) * Math.PI / 180;
   skyDome.material.color.copy(LOOK.sky); scene.fog.color.copy(LOOK.fog);
   if (!LAMPS) LAMPS = [mat.glow, mat.led, mat.edison].map(m => [m, m.emissiveIntensity]);
   LAMPS.forEach(([m, e]) => { m.emissiveIntensity = e * lerp(1, LOOK.lamps, lit); });
@@ -5508,10 +5605,10 @@ function apply(p) {
   const lvl = onT ? 2 : onPA ? 1 : 0;
   if (lvl !== navPA) { navPA = lvl; navb.querySelectorAll('button').forEach((b, k) => { b.innerHTML = k === lvl ? '<b>' + b.textContent + '</b>' : b.textContent; }); }
   // zonas: color desde donde está parado el visitante
-  const sp = W3([6.37, 0, 26.5]);
-  U.uOutR.value.set(sp.x, sp.z, lerp(-3, 70, ramp(p, P_STH, P_IN)));
+  const sp = W3([7.0, 0, 31.0]);
+  U.uOutR.value.set(sp.x, sp.z, lerp(-3, 70, ramp(p, P_ST, P_STH)));   // el barrido sale mientras te detienes frente a la fachada
   ZONES.forEach(z => { const r = lerp(-1, z.rMax, ramp(p, KEYS[z.revA].p, KEYS[z.revB].p)); z.rIdx.forEach(k => U.uRad.value[k].z = r); });
-  garageGate.rotation.x = -ramp(p, P_ST, P_STH) * 1.45; pedGate.rotation.y = -ramp(p, lerp(P_ST, P_STH, .3), P_STH) * 1.4;
+  garageGate.rotation.x = -ramp(p, P_STH, P_IN) * 1.45; pedGate.rotation.y = -ramp(p, P_STH, lerp(P_STH, P_IN, .3)) * 1.4;
   const sky = ramp(p, P0 * .8, P_AER); scene.background.copy(PAPER).lerp(LOOK.fog, sky);
   const fogK = sky * (1 - clamp((camera.position.y - 60) / 40)); scene.fog.near = lerp(4000, 45, fogK); scene.fog.far = lerp(5000, 260, fogK); backdrop.visible = sky > .02; bushRing.visible = sky > .95; bushRing.material.emissiveIntensity = .04 + .8 * LOOK.hemi;   // la luz propia sigue al día: de noche no brillan
   skyDome.visible = sky > .01; skyDome.material.opacity = sky; skyDome.position.copy(camera.position);
@@ -5534,7 +5631,7 @@ function apply(p) {
   if (p < P0 * .3) cap = '';
   CAPS.forEach(c => c.el.classList.toggle('on', c.id === cap));
   // la sombra del sol solo se recalcula cuando algo que la proyecta se mueve o aparece (losas que suben, plantas, portones)
-  const sig = [sun.position.x.toFixed(2), sun.position.y.toFixed(2), up1.visible, up2.visible, up3.visible, perg.visible, paIn.visible, furn.visible, up1.position.y, up2.position.y, garageGate.rotation.x, pedGate.rotation.y].map(v => typeof v === 'number' ? v.toFixed(3) : v).join();
+  const sig = [sun.position.x.toFixed(2), sun.position.y.toFixed(2), up1.visible, up2.visible, up3.visible, perg.visible, paIn.visible, furn.visible, Math.round(up1.position.y * 4) / 4, Math.round(up2.position.y * 4) / 4, garageGate.rotation.x, pedGate.rotation.y].map(v => typeof v === 'number' ? v.toFixed(3) : v).join();
   if (sig !== shSig) { shSig = sig; renderer.shadowMap.needsUpdate = true; }
   hud(p);
 }
@@ -5553,6 +5650,7 @@ if (window.gsap && window.ScrollTrigger && window.Lenis) {
 } else addEventListener('scroll', readScroll, { passive: true });
 
 const useBloom = !MOBILE;
+await LDstep('build', .97, 'COMPILANDO SOMBREADORES');
 let composer = null, finish = null;
 let gtao = null;
 if (useBloom) {
@@ -5634,9 +5732,54 @@ function governor(now) {
   qSlow = med > 22 ? qSlow + 1 : 0;   // dos tandas lentas seguidas: no reacciona a un tirón aislado
   if (qSlow >= 2) { QUALITY[qLvl++](); qSlow = 0; qHold = now + 1000; }
 }
-// compila de una vez los materiales de lo que aún está oculto (planta alta, lámina 02, marcadores): sin tirones cuando aparecen
-{ const hid = [], tex = new Set(); scene.traverse(o => { if (!o.visible) { hid.push(o); o.visible = true; } if (o.material) Object.values(o.material).forEach(v => v && v.isTexture && tex.add(v)); });
-  renderer.compile(scene, camera); tex.forEach(t => renderer.initTexture(t)); hid.forEach(o => { o.visible = false; }); }
+// ensayo antes de mostrar: compila (async, con el destino y el recorte reales) y dibuja cuadros de cada tramo para que nada se compile ni suba a la GPU durante el recorrido
+window.__progs = () => renderer.info.programs.length;
+window.__ldLog = [];
+async function warmUp() {
+  const T0 = performance.now(), log = (n) => window.__ldLog.push([n, Math.round(performance.now() - T0), renderer.info.programs.length]);
+  const raf = () => new Promise(r => { const f = () => { f.d || (f.d = 1, r()); }; requestAnimationFrame(f); setTimeout(f, 80); });
+  // 1) esperar a que terminen las descargas (HDRI, texturas escaneadas): cambian la clave de los programas
+  { let stable = 0; const t1 = performance.now();
+    while (performance.now() - t1 < 20000 && stable < 4) { await new Promise(r => setTimeout(r, 50)); stable = (LD.t > 0 && LD.n >= LD.t) ? stable + 1 : 0; } }
+  log('descargas');
+  renderer.render(new THREE.Scene(), camera);   // inicializa el estado de recorte (1 plano) antes de compilar
+  const st = new Map(); scene.traverse(o => { st.set(o, [o.visible, o.frustumCulled]); });
+  const y1 = up1.position.y, y2 = up2.position.y;
+  const force = () => scene.traverse(o => { o.visible = true; o.frustumCulled = false; });
+  try {
+  force(); up1.position.y = up2.position.y = 0;
+  LD.build = 1;
+  // compileAsync no avisa su avance: el tramo sube asintóticamente (hasta .92) mientras compila
+  const tc = performance.now(), cp = setInterval(() => { LD.comp = Math.max(LD.comp, .92 * (1 - Math.exp(-(performance.now() - tc) / 3500))); }, 60);
+  renderer.setRenderTarget(composer ? composer.readBuffer : null);
+  try { await renderer.compileAsync(scene, camera); } catch (e) { renderer.compile(scene, camera); }
+  renderer.setRenderTarget(null); clearInterval(cp);
+  const tex = new Set(); scene.traverse(o => { if (o.material) [].concat(o.material).forEach(m => Object.values(m).forEach(v => v && v.isTexture && tex.add(v))); });
+  tex.forEach(t => renderer.initTexture(t));
+  log('compileAsync'); await LDstep('comp', 1, 'ENSAYANDO PLANTA ALTA');
+  const stops = [P_FIN, P_PA, P_T, 0];
+  for (let k = 0; k < stops.length && !warmDead; k++) {
+    apply(stops[k]); force();
+    renderer.shadowMap.needsUpdate = true;
+    composer ? composer.render() : renderer.render(scene, camera);
+    log('cuadro' + k); await LDstep('warm', (k + 1) / stops.length);
+  }
+  } finally {
+    if (warmDead) { st.forEach((v, o) => { o.frustumCulled = v[1]; }); }   // venció el tope: el loop ya corre, no pisar su visibilidad
+    else {
+      st.forEach((v, o) => { o.visible = v[0]; o.frustumCulled = v[1]; });
+      up1.position.y = y1; up2.position.y = y2;
+      shSig = ''; planOK = false;
+      apply(0); renderer.shadowMap.needsUpdate = true;
+    }
+  }
+  log('fin');
+  LD.n = LD.t = Math.max(LD.t, 1);   // una textura pendiente no debe dejar el objetivo < 100
+  await LDstep('warm', 1, 'LISTO');
+}
+let warmDead = false;
+try { await Promise.race([warmUp(), new Promise(r => setTimeout(() => { warmDead = true; r(); }, 25000))]); } catch (e) { console.warn(e); }
+LD.n = LD.t = Math.max(LD.t, 1); LD.ready = true;
 let lastNow = performance.now();
 renderer.setAnimationLoop(now => {
   governor(now);
@@ -5652,6 +5795,8 @@ renderer.setAnimationLoop(now => {
 });
 window.__KEYS = KEYS.map(k => ({ p: k.p, type: k.type, z: k.z, lv: k.lv }));
 // pruebas: dibuja un cuadro en p y devuelve los ms con la GPU sincronizada (sirve aunque la pestaña esté en segundo plano)
+window.__fach = v => { fachPB.visible = fachPA.visible = fachT.visible = v; };
+window.__camInfo = () => ({ pos: [camera.position.x + CX, camera.position.y, camera.position.z + CZ].map(v => +v.toFixed(2)), fov: camera.fov, aspect: camera.aspect, near: camera.near });
 window.__frameMs = p => { const gl = renderer.getContext(), px = new Uint8Array(4), t0 = performance.now(); apply(p); composer ? composer.render() : renderer.render(scene, camera); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); return performance.now() - t0; };
 // pruebas: llamadas de dibujo y triángulos de un cuadro completo en p (sombra, oclusión, color y posproceso)
 window.__info = p => { renderer.info.autoReset = false; renderer.info.reset(); const ms = window.__frameMs(p); const { calls, triangles } = renderer.info.render; renderer.info.autoReset = true; return { ms, calls, triangles, dpr: renderer.getPixelRatio(), gtao: gtao ? gtao.enabled : false }; };

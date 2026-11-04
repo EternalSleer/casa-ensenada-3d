@@ -25,7 +25,8 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerp = (a, b, t) => a + (b - a) * t;
 const sm = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
-const setP = (p) => { SEQ.real = true; SEQ.progress = Math.max(SEQ.progress, p); };
+const setP = (p) => { SEQ.real = true; SEQ.progress = Math.max(SEQ.progress, p || 0); };
+const stepRange = (a, b) => async (f) => { setP(a + (b - a) * f); await raf(); };
 const C = (h) => new THREE.Color(h);
 const DEG = Math.PI / 180;
 
@@ -73,7 +74,7 @@ const envScene = new THREE.Scene(); envScene.add(new THREE.Mesh(new THREE.Sphere
 skyMat.uniforms.uEnv.value = 1;
 const ENV = new THREE.PMREMGenerator(renderer).fromScene(envScene, 0.02).texture;
 skyMat.uniforms.uEnv.value = 0;
-const T = makeTextures(renderer, PHONE);
+const T = await makeTextures(renderer, PHONE, stepRange(0.34, 0.48));
 setP(0.48); await raf();
 
 // ---------------------------------------------------------------- cámaras: llaves [pantallas, ojo (x, altura, y), mira (x, altura, y)] en coordenadas del plano
@@ -146,8 +147,24 @@ function weekAt(v) {
   }
   return WEEKS;
 }
-const END = { out: [29.5, 31.2], unpour: [31.2, 32.2], zoom: [32.2, 33.3], total: 33.9 };
+// face: la cámara sale de la casa, sube sobre ella y baja a la calle frente a la fachada; faceHold: se queda ahí; out: sale a la hoja
+const END = { face: [29.5, 31.0], faceHold: [31.0, 31.6], out: [31.6, 33.3], unpour: [33.3, 34.3], zoom: [34.3, 35.4], total: 36.0 };
 const KW = toK(...(() => { const w = walkAt(V_END); return [w.P, w.L, EYE_FOV]; })());
+const KF = toK(PL(7.0, 1.7, 31.0), PL(7.4, 3.9, 19.9), EYE_FOV);   // la fachada principal desde la calle (eje 9)
+// del final del recorrido (dentro de la cocina) la cámara sale por la puerta del jardín por donde entró, sube por detrás de la casa, la
+// sobrevuela y baja a la calle frente a la fachada. Llaves [t 0–1, ojo x, altura, y, mira x, altura, y] del plano, curva suave como LEGS.
+const FACE_KEYS = [
+  [0, 7.20, 1.70, 8.10, 2.2, 1.5, 4.2], [0.12, 8.30, 1.75, 5.2, 8.4, 1.7, 2.0], [0.24, 8.35, 1.75, 3.6, 8.0, 1.8, 0.0], [0.34, 7.00, 2.3, 1.8, 6.5, 2.5, 8.0],
+  [0.46, 6.20, 4.2, -1.2, 6.5, 3.0, 10.0], [0.58, 6.50, 8.0, 0.8, 7.0, 3.0, 12.0], [0.72, 7.30, 13.5, 8.0, 7.2, 3.0, 17.0], [0.88, 7.00, 13.0, 27.0, 7.2, 3.5, 19.9], [1.0, 7.0, 1.7, 31.0, 7.4, 3.9, 19.9],
+];
+const FACE_P = new THREE.CatmullRomCurve3(FACE_KEYS.map((k) => PL(k[1], k[2], k[3])), false, 'centripetal');
+const FACE_L = new THREE.CatmullRomCurve3(FACE_KEYS.map((k) => PL(k[4], k[5], k[6])), false, 'centripetal');
+function faceAt(f) {
+  const t = lerp(f, ease(f), 0.35), n = FACE_KEYS.length;
+  let i = 0; while (i < n - 2 && t > FACE_KEYS[i + 1][0]) i++;
+  const u = (i + clamp((t - FACE_KEYS[i][0]) / (FACE_KEYS[i + 1][0] - FACE_KEYS[i][0]), 0, 1)) / (n - 1);
+  return toK(FACE_P.getPoint(u), FACE_L.getPoint(u), EYE_FOV);
+}
 
 // los puntales se dejan pasillo donde pasa la cámara: muestras de su camino cada 0.1 de scroll
 const SAMPLES = [];
@@ -155,7 +172,7 @@ for (let v = DIVE; v <= V_END + 1e-6; v += 0.1) { const w = walkAt(v); SAMPLES.p
 
 const R = makeMaterials(T, ENV);
 const scene = new THREE.Scene();
-scene.add(buildWorld({ R, T, phone: PHONE, samples: SAMPLES }));
+scene.add(await buildWorld({ R, T, phone: PHONE, samples: SAMPLES }, stepRange(0.5, 0.62)));
 const stage = buildStage(R);
 scene.add(stage, sky);
 setP(0.62); await raf();
@@ -203,10 +220,11 @@ function clock(week, show) {
 }
 
 // ---------------------------------------------------------------- la luz según la semana
-let shadowKey = '';
+let shadowKey = '', faceK = 0;   // faceK: 1 cuando la cámara mira la fachada a la calle (el sol se refleja hacia ella)
+const SUN_FACE = sunDir(148, 21);
 function lightFor(week) {
   const pm = sm(27, 36, week);
-  const dir = SUN_AM.clone().lerp(SUN_MID, sm(15.4, 17.4, week)).normalize().lerp(SUN_PM, pm).normalize();
+  const dir = SUN_AM.clone().lerp(SUN_MID, sm(15.4, 17.4, week)).normalize().lerp(SUN_PM, pm).normalize().lerp(SUN_FACE, faceK).normalize();
   sun.position.copy(sunAt).addScaledVector(dir, 140);
   sun.color.set(0xffe7cc).lerp(C('#ffc68c'), pm); sun.intensity = lerp(3.15, 3.55, pm);
   hemi.intensity = lerp(0.88, 0.72, pm);
@@ -217,22 +235,45 @@ function lightFor(week) {
   scene.fog.color.copy(skyMat.uniforms.uHor.value);
   for (const l of lamps) l.intensity = 7.5 * l.userData.k * sm(37, 39.5, week);
   R.shade.emissiveIntensity = 2.6 * sm(37, 39.5, week);
-  const key = (Math.round(week * 25) / 25).toFixed(2);
+  R.led.emissiveIntensity = 2.4 * sm(37, 39.5, week);
+  const key = (Math.round(week * 25) / 25).toFixed(2) + ',' + faceK.toFixed(2);
   if (key !== shadowKey) { shadowKey = key; renderer.shadowMap.needsUpdate = true; }
 }
 
 // ---------------------------------------------------------------- calentamiento detrás del cargador
 const screenRect = () => ({ x: 0, y: 0, w: W, h: H });
+// compila los sombreadores de cada conjunto (papel, normales y sitio) sin bloquear el hilo, con el destino que usará cada uno
+const setOf = (set) => scene.traverse((o) => {
+  if (!o.isMesh) return;
+  const s = o.userData.sets;
+  if (!s) { o.visible = set === 'main'; return; }
+  if (!s[set]) o.visible = false; else { o.visible = true; o.material = s[set]; }
+});
+{
+  const sets = [['paper', pipe.paperRT, 0.66], ['nd', pipe.ndRT, 0.71], ['main', pipe.comp.readBuffer, 0.76]];
+  for (const [set, rt, p] of sets) {
+    setOf(set); renderer.setRenderTarget(rt);
+    await renderer.compileAsync(scene, cam);
+    renderer.setRenderTarget(null);
+    setP(p); await raf();
+  }
+}
 pipe.draw(TILES.map((t, i) => ({ rect: REST[i], cam: K0, now: t.w1, newFrom: t.w0 })));
 setP(0.78); await raf();
-for (const w of [WEEKS, 18, W_DIVE, 2.5]) {
-  U.real.value = w; lightFor(w); renderer.shadowMap.needsUpdate = true;
-  pipe.real({ cam: w === WEEKS ? KW : K3, rect: screenRect() });
+{
+  const warm = [[WEEKS, KW], [WEEKS, KF], [18, K3], [W_DIVE, K3], [2.5, K3], [2.5, K1]];
+  for (let i = 0; i < warm.length; i++) {
+    const [w, k] = warm[i];
+    faceK = k === KF ? 1 : 0; U.real.value = w; lightFor(w); renderer.shadowMap.needsUpdate = true;
+    pipe.real({ cam: k, rect: screenRect() });
+    setP(0.78 + 0.16 * (i + 1) / warm.length); await raf();
+  }
 }
-pipe.real({ cam: K1, rect: screenRect() });
-setP(0.94); await raf();
+faceK = 0;
 await document.fonts.ready;
 setP(1);
+// el cargador termina de llenarse solo (sube a lo más 90 % por segundo); el tope evita esperar si la pestaña está oculta
+if (!OFFLINE) { const tw = performance.now(); while (SEQ.shown < 0.995 && performance.now() - tw < 5000) await raf(); SEQ.shown = Math.max(SEQ.shown, 1); }
 
 // ---------------------------------------------------------------- la portada: se acomoda, aterriza y se dibuja
 const S = { now: -1.6, drawT: -1, drawn: false };
@@ -306,6 +347,7 @@ const rowOf = (w) => { let n = PROG[0][0]; for (const [name, a] of PROG) if (w >
 function chipFor(v, week, pour, diving) {
   const wk = `Semana ${pad(clamp(Math.ceil(week - 1e-3), 1, WEEKS))} &nbsp;//&nbsp; `;
   if (v >= END.zoom[0] + 0.3) return '';
+  if (v >= V_END + 0.15 && v < END.out[0]) return 'Semana 40 &nbsp;//&nbsp; <i>Entrega · fachada a la calle</i>';
   if (v >= END.out[0] + 0.15) return 'Dibujo 06 &nbsp;//&nbsp; Cancelería, acabados y entrega &nbsp;//&nbsp; <i>Sem 24–40</i>';
   if (v > DIVE + 0.5) {
     if (week >= 39.8) return 'Semana 40 &nbsp;//&nbsp; <i>Entrega</i>';
@@ -354,6 +396,7 @@ function frame(now) {
   if (STILL) window.__heroDone = true;
 
   const ending = sv >= END.out[0];
+  const facing = !ending && sv > V_END;
   const live = ending ? 5 : 0;
   let z, c, pour, l = 0, k, week, realOnly, rectL;
   const Rl = REST[live], sC = Math.max(W / Rl.w, H / Rl.h);
@@ -369,19 +412,25 @@ function frame(now) {
     k = c > 0 ? lerpK(K0, K1, c) : K0;
     if (l > 0) k = lerpK(K1, K3, l, { f: sm(0, 0.62, l), e: sm(0.22, 1, l), T: sm(0.18, 1, l), h: sm(0.18, 1, l) });
     if (sv > DIVE) { const w = walkAt(sv); k = toK(w.P, w.L, EYE_FOV); }
+    if (facing) {   // KW -> jardín -> sobre la casa -> KF
+      const f = clamp((sv - END.face[0]) / (END.face[1] - END.face[0]), 0, 1);
+      k = faceAt(f);
+      week = WEEKS;
+    }
   } else {
     week = WEEKS;
     const lo = clamp((sv - END.out[0]) / (END.out[1] - END.out[0]), 0, 1);
     const lu = clamp((sv - END.unpour[0]) / (END.unpour[1] - END.unpour[0]), 0, 1);
     const lz = clamp((sv - END.zoom[0]) / (END.zoom[1] - END.zoom[0]), 0, 1);
     const K06s = { T: K0.T, az: K0.az, el: K0.el, h: K0.h * H / coverH, fov: 2 };
-    k = lerpK(KW, K06s, lo, { f: sm(0, 0.78, lo), e: sm(0.3, 1, lo), T: sm(0.22, 1, lo), h: sm(0.22, 1, lo) });
+    k = lerpK(KF, K06s, lo, { f: sm(0, 0.78, lo), e: sm(0.3, 1, lo), T: sm(0.22, 1, lo), h: sm(0.22, 1, lo) });
     pour = lerp(WEEKS + 0.8, -1.8, ease(lu));
     realOnly = lu <= 0;
     z = 1 - ease(lz); c = lz > 0 ? 1 : 0;
     if (lz > 0) k = K0;
   }
   if (WQ !== null) week = WQ;
+  faceK = facing ? sm(0.45, 1, clamp((sv - END.face[0]) / (END.face[1] - END.face[0]), 0, 1)) : ending ? 1 - sm(END.out[0], END.out[0] + 0.7, sv) : 0;
   U.real.value = week; lightFor(week);
 
   const s = Math.exp(Math.log(sC) * z);
@@ -429,7 +478,7 @@ function frame(now) {
   }
   if (pipe.shafts) {
     // los rayos de sol: solo con la cámara dentro de la casa
-    const inHouse = sv > DIVE + 4 && !ending ? 1 : ending ? 1 - sm(END.out[0], END.out[0] + 0.6, sv) : 0;
+    const inHouse = sv > DIVE + 4 && !ending ? 1 - sm(V_END, V_END + 0.4, sv) : 0;
     const dens = inHouse * (0.018 * sm(16.2, 17.2, week) * (1 - sm(22.5, 23.5, week)) + 0.006 * sm(37, 39, week));
     pipe.shafts.enabled = realOn && dens > 1e-4;
     if (pipe.shafts.enabled) {
@@ -501,6 +550,14 @@ function runRays() {
       const h = probe(P, dr, 0.25, week);
       if (h) { out.graze.push({ v: +v.toFixed(2), week: +week.toFixed(2), obj: name(h), dist: +h.distance.toFixed(2), at: [+h.point.x.toFixed(2), +h.point.y.toFixed(2), +h.point.z.toFixed(2)] }); break; }
     }
+  }
+  // tramo face: la cámara sale por la puerta del jardín, sobrevuela la casa y baja a la calle (casa terminada, semana final)
+  for (let u = 0; u < 1 - 1e-6; u += 0.004) {
+    const P = FACE_P.getPoint(u), d = FACE_P.getPoint(u + 0.004).sub(P), len = d.length(); nSamples++;
+    const name = (h) => names.get(h.object.material) || '?', v = +(END.face[0] + u * (END.face[1] - END.face[0])).toFixed(2);
+    const h = probe(P, d.clone().normalize(), len + 0.05, WEEKS);
+    if (h) out.crash.push({ v, face: true, obj: name(h), dist: +h.distance.toFixed(2), at: [+h.point.x.toFixed(2), +h.point.y.toFixed(2), +h.point.z.toFixed(2)] });
+    for (const dr of dirs) { const g = probe(P, dr, 0.25, WEEKS); if (g) { out.graze.push({ v, face: true, obj: name(g), dist: +g.distance.toFixed(2), at: [+g.point.x.toFixed(2), +g.point.y.toFixed(2), +g.point.z.toFixed(2)] }); break; } }
   }
   meshes.forEach((m, i) => { m.material.side = mats[i]; });
   out.samples = nSamples;

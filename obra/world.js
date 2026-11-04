@@ -83,7 +83,7 @@ function stones(g, s, n, r0, r1, cols, shadow = 0.35) {
   }
 }
 
-export function makeTextures(renderer, phone) {
+export async function makeTextures(renderer, phone, step) {
   MAX_ANISO = renderer.capabilities.getMaxAnisotropy();
   const S = phone ? 512 : 1024;
   const T = {};
@@ -97,6 +97,7 @@ export function makeTextures(renderer, phone) {
     const a = fbm(s, 8, 4), b = fbm(s, 48, 3);
     ramp(g, s, (i) => clamp(0.5 + (a[i] - 0.5) * 1.4 + (b[i] - 0.5) * 0.9, 0, 1), [40, 40, 40], [128, 128, 128], [220, 220, 220], 24);
   }, true);
+  if (step) await step(0.14);
   // cut subsoil clay: stratified warm earth
   T.clay = canvasTex(S, 2.8, (g, s) => {
     const a = fbm(s, 3, 5), b = fbm(s, 20, 3), c = fbm(s, 80, 2);
@@ -118,6 +119,7 @@ export function makeTextures(renderer, phone) {
       g.lineWidth = 0.6 + rnd() * 0.9; g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(ang) * l, y + Math.sin(ang) * l); g.stroke();
     }
   });
+  if (step) await step(0.29);
   // fair-faced architectural concrete, cast against 150 mm boards, tie holes on 600 mm grid + bump map
   T.conc = canvasTex(S, 2.4, (g, s) => {
     const a = fbm(s, 4, 4), b = fbm(s, 48, 2);
@@ -148,6 +150,7 @@ export function makeTextures(renderer, phone) {
     for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { g.beginPath(); g.arc((i + 0.5) * s / 4, (j + 0.5) * s / 4, s / 200, 0, 7); g.fill(); }
   }, true);
 
+  if (step) await step(0.43);
   // European wide-plank oak flooring: even warm honey tone, natural grain + bump map
   T.oak = canvasTex(S, 3.2, (g, s) => {
     const rows = 14, h = s / rows;
@@ -178,6 +181,26 @@ export function makeTextures(renderer, phone) {
     }
   }, true);
 
+  // laja de piedra seca (revestimiento de la barda y del andador): piedras poligonales finas de 12–30 cm (Voronoi con junta oscura), repite cada 1.2 m
+  T.laja = canvasTex(512, 1.2, (g, s) => {
+    const cols = [[143, 135, 123], [160, 151, 137], [179, 169, 153], [152, 144, 131], [168, 158, 143]];
+    const NX = 9, NY = 12, sites = [];
+    for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++) sites.push({ x: (i + 0.15 + rnd() * 0.7) / NX * s, y: (j + 0.15 + rnd() * 0.7) / NY * s, c: cols[Math.floor(rnd() * cols.length)], v: 0.9 + rnd() * 0.2 });
+    const im = g.createImageData(s, s), d = im.data, px = s / 120;
+    for (let y = 0; y < s; y++) for (let x = 0; x < s; x++) {
+      let d1 = 1e9, d2 = 1e9, b = null;
+      for (const st of sites) for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+        const dx = x - (st.x + ox * s), dy = y - (st.y + oy * s), q = dx * dx + dy * dy;
+        if (q < d1) { d2 = d1; d1 = q; b = st; } else if (q < d2) d2 = q;
+      }
+      const e = Math.sqrt(d2) - Math.sqrt(d1), i = (y * s + x) * 4;
+      const joint = Math.min(1, e / (1.1 * px)), shade = 0.86 + 0.14 * joint;
+      const f = b.v * (0.55 + 0.45 * joint) * (1 - 0.18 * Math.min(1, Math.sqrt(d1) / (22 * px)));
+      d[i] = Math.min(255, b.c[0] * f * shade + 8); d[i + 1] = Math.min(255, b.c[1] * f * shade + 6); d[i + 2] = Math.min(255, b.c[2] * f * shade + 4); d[i + 3] = 255;
+    }
+    g.putImageData(im, 0, 0);
+  });
+  if (step) await step(0.5);
   // Honed Roman travertine stone
   T.travertine = canvasTex(512, 1.8, (g, s) => {
     const a = fbm(s, 6, 4), b = fbm(s, 32, 2);
@@ -191,6 +214,7 @@ export function makeTextures(renderer, phone) {
       g.fillRect(rnd() * s, rnd() * s, 3 + rnd() * 14, 1 + rnd() * 2);
     }
   });
+  if (step) await step(0.57);
   // Architectural walnut veneer
   T.walnut = canvasTex(512, 1.6, (g, s) => {
     const a = fbm(s, 4, 3);
@@ -220,6 +244,7 @@ export function makeTextures(renderer, phone) {
     for (let r = 0; r < 4; r++) g.fillRect(0, r * s / 4, s, 1.5);
     for (let r = 0; r < 4; r++) for (let c = 0; c < 2; c++) g.fillRect(c * s / 2 + (r % 2) * s / 4, r * s / 4, 1.5, s / 4);
   });
+  if (step) await step(0.71);
   // Large architectural canvas painting
   T.canvas = (() => {
     const c = document.createElement('canvas'); c.width = 520; c.height = 700; const g = c.getContext('2d');
@@ -242,6 +267,7 @@ export function makeTextures(renderer, phone) {
     ramp(g, s, (i) => clamp(0.5 + (a[i] - 0.5) * 0.75 + (b[i] - 0.5) * 0.45, 0, 1), [176, 172, 164], [194, 190, 182], [208, 205, 198], 10);
     for (let y = 0; y < s; y += s / 8) { g.fillStyle = 'rgba(60,55,50,0.08)'; g.fillRect(0, y, s, 1); }
   });
+  if (step) await step(0.86);
   // Industrial heavy machinery finish: weathered ochre-yellow with panel seams & grime
   T.machine = canvasTex(512, 1.6, (g, s) => {
     const a = fbm(s, 6, 3);
@@ -397,6 +423,11 @@ export function makeMaterials(T, env) {
     glass: new THREE.MeshBasicMaterial({ color: 0xcfe2e6, envMap: env, combine: THREE.MixOperation, reflectivity: 0.26, transparent: true, opacity: 0.09, depthWrite: false }),
     fabric: std({ map: T.linen, roughness: 0.9 }),
     rug: std({ color: 0xb9a88e }),
+    // fachada principal: concreto aparente claro, laja de piedra seca, listones de madera y tira LED
+    concAp: std({ map: T.conc, color: 0xd0d0cf, roughness: 0.7 }),
+    laja: std({ map: T.laja, bumpMap: T.concBump, bumpScale: 0.03, roughness: 0.85 }),
+    fins: std({ map: T.oak, color: 0xb8875a, roughness: 0.55 }),
+    led: std({ color: 0xfff4e0, emissive: 0xffdcae, emissiveIntensity: 0, roughness: 0.4 }),
     walnut: std({ map: T.walnut, bumpMap: T.oakBump, bumpScale: 0.006, roughness: 0.48, envMapIntensity: 0.42 }),
     leather: std({ color: 0x824829, bumpMap: T.linenBump, bumpScale: 0.003, roughness: 0.46, envMapIntensity: 0.48 }),
     linen: std({ map: T.linen, bumpMap: T.linenBump, bumpScale: 0.005, roughness: 0.9 }),
@@ -496,6 +527,18 @@ function partWeeks(p) {
       return p.b[4] <= 6.75 ? aff(25.8, 0.6) : aff(25.2, 1.2);   // barandal de vidrio / cancelería de la terraza
     case 'pergola': return aff(25.5, 1.0);
     case 'dframe': return aff(27.0, 1.0);
+    case 'fachada': {
+      const t = p.b[1] >= 5;
+      switch (p.m) {
+        case 'plaster': return t ? aff(17.4, 0.8) : aff(16.2, 0.6);
+        case 'concAp': return p.b[1] >= 5 ? aff(21.6, 0.6) : (p.b[1] >= 2 && p.b[2] < 9) ? aff(16.0, 0.6) : p.b[1] >= 2 ? aff(12.4, 0.6) : aff(9.4, 0.6);
+        case 'laja': return aff(28.0, 1.2);
+        case 'fins': case 'dark': return aff(26.0, 0.8);
+        case 'steel': return aff(25.0, 0.8);
+        case 'led': return aff(27.4, 0.4);
+      }
+      return aff(28.0, 0.8);
+    }
     case 'gate': { const w = p.g === 'cochera' ? 28.5 : 28.8; return () => w; }
   }
   const [a, b] = PHASE[Math.min(6, p.lvl + 2)] || [0, 40];
@@ -572,9 +615,9 @@ function offsetGeo(g, d) {
   return o;
 }
 const FLOOR_MAT = { conc: 'concPol' };
-const NOSHADOW = new Set(['glass', 'steel', 'plaster', 'oak', 'travertine', 'grass', 'concPol', 'water', 'white']);
+const NOSHADOW = new Set(['glass', 'steel', 'plaster', 'oak', 'travertine', 'grass', 'concPol', 'water', 'white', 'led']);
 const DRAWN_NF = new Set(['struct', 'barda', 'stair', 'columna', 'zapata', 'contra']);   // línea de peso completo
-const DRAWN_FR = new Set(['frame', 'dframe', 'pergola']);                                  // cancelería: línea fina
+const DRAWN_FR = new Set(['frame', 'dframe', 'pergola', 'fachada']);                                  // cancelería: línea fina
 
 // pone la casa en `group`; devuelve lo que necesitan los puntales y el terreno
 function buildHouse(group, R) {
@@ -1144,7 +1187,8 @@ function foundationKit(group, R, samples) {
 }
 
 // ---------------------------------------------------------------- build it
-export function buildWorld(o) {
+export async function buildWorld(o, step) {
+  const tick = async (p) => { if (step) await step(p); };
   const { R, phone } = o;
   const group = new THREE.Group();
   const realOnly = (main) => ({ main, paper: null, nd: null });
@@ -1153,6 +1197,7 @@ export function buildWorld(o) {
   const ctx = buildHouse(group, R);
   ctx.samples = o.samples || [];
   foundationKit(group, R, ctx.samples);
+  await tick(0.2);
 
   // obra falsa: puntales y cimbra
   for (const E of PROPS) {
@@ -1161,9 +1206,11 @@ export function buildWorld(o) {
     if (g.deck) addMesh(group, g.deck, { main: R.ply, paper: DM.paper, nd: DM.ndProp });
   }
 
+  await tick(0.4);
   // el terreno plano, con cepas
   for (const m of buildLand(o, R)) group.add(m);
 
+  await tick(0.55);
   // la retroexcavadora en la calle, con la pluma hacia el lote
   {
     const ex = excavatorGeo({ tip: V(5.35, 3.55, 0.12), wrist: V(5.85, 1.05, 0.12), bucket: -2.25 });
@@ -1172,6 +1219,7 @@ export function buildWorld(o) {
     exg.position.set(9.5 - CX, 0, 23 - CZ); exg.rotation.y = Math.PI / 2; group.add(exg);
   }
 
+  await tick(0.7);
   // montón de tierra fuera del lote, al poniente de la calle
   {
     const hs = phone ? 0.25 : 0.15, n = Math.ceil(HEAP[2] * 2.2 / hs);
@@ -1184,6 +1232,7 @@ export function buildWorld(o) {
   }
 
   group.add(...fence(R));
+  await tick(0.82);
 
   // luz de relleno bajo la losa de la cochera (sin sombras), para que no quede negra
   { const L = new THREE.PointLight(0xffe6c8, 11, 8.5, 1.6); L.position.set(9.75 - CX, 2.2, 16.9 - CZ); group.add(L); }
@@ -1199,7 +1248,9 @@ export function buildWorld(o) {
     ['olive', 1.3 - CX, 0.9 - CZ, 33.4], ['olive', 0.4 - CX, 13.5 - CZ, 33.8, 0.4],
   ]) trees.push(t);
   const leafK = phone ? 0.55 : 1;
+  let ti = 0;
   for (const [kind, x, z, wIn, sc] of trees) {
+    if (++ti % 12 === 0) await tick(0.85 + 0.15 * ti / trees.length);
     const y = natural(x, z), t = new THREE.Group();
     if (kind === 'cypress') {
       const h = 0.85 + rnd() * 0.35;

@@ -2196,25 +2196,25 @@ window.LINTEL_CODEMAT = (function () {
         vec3 g = vec3(float(m), float(j), float(k)), r = g + dsH33(i + g) * 0.8 - f; float d = dot(r, r);
         if (d < d1) { d2 = d1; d1 = d; id = i + g; } else if (d < d2) d2 = d; }
       return vec4(sqrt(d1), sqrt(d2), lkH(id), lkH(id + 3.3)); }`;
-  function drystone(orig, base) {
-    return code(phys({ envMapIntensity: orig.envMapIntensity, roughness: 0.9 }), 'drystone', {
+  function drystone(orig, base, scl = [2.4, 3.6, 2.4], key = 'drystone', soft = false) {
+    return code(phys({ envMapIntensity: orig.envMapIntensity, roughness: 0.9 }), key, {
       head: DRY,
       drawable: { macro: 0.3 },
       surface: `
-        vec3 sp = vDrawW * vec3(2.4, 3.6, 2.4) + 0.25 * vec3(lkn(vDrawW * 3.0), lkn(vDrawW * 3.0 + 4.0), lkn(vDrawW * 3.0 + 8.0));
+        vec3 sp = vDrawW * ${v3(scl)} + 0.25 * vec3(lkn(vDrawW * 3.0), lkn(vDrawW * 3.0 + 4.0), lkn(vDrawW * 3.0 + 8.0));
         vec4 v = dsVoro(sp);
         float e = v.y - v.x;
         float k1 = lkKeep(0.02, lkPx), k2 = lkKeep(0.004, lkPx);
-        float gap = (1.0 - smoothstep(0.02, 0.1 + lkPx * 6.0, e)) * k1;
+        float gap = (1.0 - smoothstep(0.02, ${soft ? '0.05' : '0.1'} + lkPx * 6.0, e)) * k1;
         float dome = clamp(e, 0.0, 0.5);
         vec4 rough = lkFbm(vDrawW * vec3(1.0), 40.0, 0.6, 5, lkPx);
         float pit = smoothstep(0.8, 0.88, lkn(vDrawW * 140.0)) * k2;
         float lichen = smoothstep(0.68, 0.8, lkn(vDrawW * 5.0 + 2.0)) * (1.0 - gap) * smoothstep(0.6, 1.0, lkn(vDrawW * 40.0));
-        float h = 0.012 * dome * k1 - 0.02 * gap + 0.0012 * rough.x - 0.0008 * pit;
+        float h = ${soft ? '0.005' : '0.012'} * dome * k1 - ${soft ? '0.01' : '0.02'} * gap + 0.0012 * rough.x - 0.0008 * pit;
         ${SLOPE('h')}
         vec3 col = ${v3(base)} * mix(${v3([0.82, 0.86, 0.95])}, ${v3([1.15, 1.08, 0.95])}, v.z) * (0.8 + 0.4 * v.w);
         col *= (1.0 + 0.35 * rough.x) * (1.0 - 0.4 * pit);
-        col = mix(col, col * 0.18, gap);
+        col = mix(col, col * ${soft ? '0.35' : '0.18'}, gap);
         col = mix(col, ${v3([0.2, 0.21, 0.16])}, lichen * 0.5);
         diffuseColor.rgb *= col;
         roughnessFactor = clamp(0.86 + 0.08 * rough.x + 0.1 * gap, 0.6, 1.0);`,
@@ -4341,6 +4341,48 @@ window.LINTEL_CODEMAT = (function () {
         roughnessFactor = clamp(0.30 + 0.08 * (1.0 - earlyLate) + 0.14 * pore + 0.06 * abs(fib), 0.22, 0.56);`,
     });
   }
+  function teakHoney(orig) {
+    return code(phys({ envMapIntensity: 0.72, roughness: 0.5, clearcoat: 0.08, clearcoatRoughness: 0.22 }), 'teakHoney', {
+      surface: `
+        vec3 p = vDrawW;
+        float pxPlan = p.x + 30.0, pyPlan = p.z + 24.0;
+        float tPx = mix(lkPxM, lkPx, 0.35);
+        // Determine member axis: vertical posts/legs vs horizontal rails/slats running along X or Z
+        bool isVertSide = abs(lkWN.y) < 0.55;
+        bool runAlongX = isVertSide
+          ? (abs(lkWN.z) > abs(lkWN.x))
+          : ((pyPlan < 10.12 && pxPlan > 25.5 && pxPlan < 31.6) || (pyPlan > 10.65 && pyPlan < 12.25 && pxPlan > 27.1 && pxPlan < 29.5));
+        // g.x: across the grain, g.y: along the grain
+        vec2 g = runAlongX ? vec2(p.z + p.y * 0.7, p.x) : vec2(p.x + p.y * 0.7, p.z);
+        if (isVertSide && p.y > 0.27 && abs(lkWN.x) > 0.35 && abs(lkWN.z) > 0.35) {
+          g = vec2(p.x + p.z, p.y);
+        }
+        float stave = floor(g.x / 0.068);
+        float r1 = lkH2(vec2(stave, 3.7)), r2 = lkH2(vec2(stave, 9.1));
+        float warp = lkFbm(vec3(g.x * 2.8, g.y * 0.65, r1 * 5.0), 1.9, 0.52, 3, tPx * 0.5).x;
+        float ringCoord = (g.x * 30.0 + warp * 2.6) + r2 * 4.0;
+        float rVis = 1.0 - smoothstep(0.24, 0.62, fwidth(ringCoord));
+        float ring = fract(ringCoord);
+        float earlyLate = mix(0.46, smoothstep(0.0, 0.24, ring) * (1.0 - smoothstep(0.54, 0.94, ring)), rVis);
+        // Characteristic dark mineral/silica oily streaks of Burmese teak
+        float darkStreak = smoothstep(0.62, 0.88, lkn(vec3(g.x * 28.0 + warp * 3.2, g.y * 1.4, r1 * 11.0))) * (0.45 + 0.55 * rVis);
+        float fib = (lkn(vec3(g.x * 420.0, g.y * 14.0, r1 * 7.0)) - 0.5) * lkKeep(0.0018, tPx)
+                  + 0.55 * (lkn(vec3(g.x * 140.0, g.y * 5.0, r2 * 13.0)) - 0.5) * lkKeep(0.0055, tPx);
+        float pore = smoothstep(0.75, 0.90, lkn(vec3(g.x * 680.0, g.y * 34.0, r2 * 17.0))) * lkKeep(0.0012, tPx);
+        float ray = 0.5 + 0.5 * sin(g.y * 18.0 + warp * 4.5);
+        float h = 0.00014 * earlyLate + 0.00008 * fib - 0.00014 * pore - 0.00006 * darkStreak;
+        ${SLOPE('h')}
+        lkG *= lkFlat(lkWN);
+        vec3 teakDark = ${v3([0.30, 0.165, 0.07])};
+        vec3 teakMid  = ${v3([0.40, 0.225, 0.095])};
+        vec3 teakGold = ${v3([0.47, 0.28, 0.125])};
+        vec3 col = mix(teakDark, mix(teakMid, teakGold, 0.42 + 0.58 * ray), earlyLate);
+        col = mix(col, ${v3([0.068, 0.032, 0.012])}, darkStreak * 0.08);
+        col *= (0.90 + 0.20 * r1) * (1.0 + 0.22 * fib) * (1.0 - 0.32 * pore);
+        diffuseColor.rgb = col;
+        roughnessFactor = clamp(0.30 + 0.08 * (1.0 - earlyLate) + 0.14 * pore + 0.06 * abs(fib), 0.22, 0.56);`,
+    });
+  }
   /* Luxury Outdoor Performance Bouclé-Linen Upholstery (outdoorWhite & outdoorSage) for the Patio Lounge Cushions:
      Combines tactile multi-ply basketweave and bouclé loop micro-relief with double French welt piping (CLOTH_SEAM),
      soft fold shading, and sky-hemisphere indirect lift so the white and sage-olive green cushions stay crisp and rich in shade. */
@@ -4952,7 +4994,7 @@ window.LINTEL_CODEMAT = (function () {
     figLeaf: figLeaf, figPot: figPot, figStalk: strelStem, figStem: twigBark, vanityMirror: vanityMirror, straw: strawWeave,
     agave: (m) => patioPlantLeaf(m, 'patioAgave', false), agave2: (m) => patioPlantLeaf(m, 'patioAgave2', true),
     flax: (m) => patioPlantLeaf(m, 'patioFlax', false), flax2: (m) => patioPlantLeaf(m, 'patioFlax2', true),
-    teak: outdoorTeak,
+    teak: outdoorTeak, teakHoney: teakHoney,
     outdoorWhite: (m) => outdoorFabric(m, 'outdoorWhite', [0.895, 0.875, 0.830], false),
     outdoorSage: (m) => outdoorFabric(m, 'outdoorSage', [0.155, 0.218, 0.142], true),
     outdoorRope: outdoorRope,
@@ -5003,8 +5045,9 @@ window.LINTEL_CODEMAT = (function () {
     logBark: logBark, logEnd: logEnd,
     trav: travTiles, travP: (m) => travTiles(m, 'travTilesSq', TRAVTF(0.8, 0.8, 0, -9.0, -16.0), 1), concreteIn: concreteIn, oakDoor: oakDoor, oakConsole: oakConsole, oakLeaf: oakLeaf,
     concrete: (m) => boardWall(m, 'concrete', [0.235, 0.226, 0.21], true),
+    concreteLight: (m) => boardWall(m, 'concreteLight', [0.40, 0.39, 0.375], true),
     conc: (m) => plainConcrete(m, 'conc', [0.092, 0.089, 0.081]), concFloor: (m) => plainConcrete(m, 'concFloor', [0.19, 0.178, 0.159]),
-    limewash: (m) => WHITE_WALL(m), drystone: (m) => drystone(m, [0.195, 0.154, 0.105]),
+    drystoneFine: (m) => drystone(m, [0.32, 0.305, 0.28], [5.0, 9.0, 5.0], 'drystoneFine', true), limewash: (m) => WHITE_WALL(m), drystone: (m) => drystone(m, [0.195, 0.154, 0.105]),
     // (Sam, 15 Oct, after a warm taupe and then a deep charcoal: "not the color wall, but a tint of white, maybe just slightly
     // darker than the roof". The limewash's texture stays, he liked it)
     // (its trowel relief a third: on a pale wall the strokes' arcs showed as rings where the light grazes)

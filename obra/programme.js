@@ -45,11 +45,14 @@
   // el cargador: la barra planeada de cada fila se dibuja conforme la página se prepara
   const plans = prog.querySelectorAll('.plan'), pct = prog.querySelector('.pct');
   const t0 = performance.now();
+  let tPrev = t0;
   (function tick() {
     if (SEQ.docked) return;
+    const now = performance.now(), dt = Math.min(0.25, (now - tPrev) / 1000); tPrev = now;
     // mientras la página no reporta avance real, avanza solo para que las primeras barras se dibujen mientras baja three.js
-    const shown = SEQ.real ? SEQ.progress : Math.min(0.3, (performance.now() - t0) / 4000);
-    SEQ.shown = Math.max(SEQ.shown || 0, shown);
+    const target = SEQ.real ? SEQ.progress : Math.min(0.3, (now - t0) / 4000);
+    // lo mostrado sube suave hacia el avance real, a lo más 90 % por segundo, y nunca baja
+    SEQ.shown = (SEQ.shown || 0) + Math.max(0, Math.min(target - (SEQ.shown || 0), dt * 0.9));
     plans.forEach((p, i) => p.classList.toggle('in', SEQ.shown >= (i + 0.5) / PROG.length));
     pct.textContent = String(Math.round(SEQ.shown * 100)).padStart(3, '0');
     requestAnimationFrame(tick);
