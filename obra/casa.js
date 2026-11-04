@@ -1,0 +1,320 @@
+// Basado en flat-to-3d/04-build-time-lapse de Sam Aing (MIT), ver LICENSE-flat-to-3d.txt (el motor de partes).
+// Copiado de index.html líneas 578–729 (2026-11-03), bloque declarativo de arquitectura, SIN editar coordenadas.
+// Si cambia el plano, recopiar el bloque (entre las marcas "inicio del bloque copiado" y "fin del bloque copiado").
+//
+// Aquí el bloque corre contra OTRA implementación de wall(), slab(), floor(), box() y rect(): no crean mallas de three.js
+// sino "partes" ({ b:[x0,y0,z0,x1,y1,z1] en mundo, m, k, lvl }) que world.js reparte en semanas, como houseParts() de la referencia.
+// Se omitió la línea 577 (paperFloor de ±420 m) y las hojas de puertas y portones de index.html (aquí van sin hojas: la cámara pasa).
+
+export const CX = 6.245, CZ = 9.965;                          // misma P() que index.html línea 184
+const W2 = (x, y) => [x - CX, y - CZ];                        // plano (x, y) -> mundo [x, z]
+
+// ---- fichas para que el bloque corra sin cambios
+// los grupos que el bloque crea con new THREE.Group() se nombran por orden de creación: paIn, up3, perg
+const NOMBRES = ['paIn', 'up3', 'perg'];
+class Grp { constructor(n) { this.n = n || NOMBRES.shift(); } add() {} }
+const THREE = { Group: Grp };
+const scene = new Grp('scene'), up1 = new Grp('up1'), up2 = new Grp('up2'), riseGrp = new Grp('riseGrp');
+const MAT = {
+  wall: 'plaster', fence: 'block', fenceL: 'block', woodClad: 'walnut', tile: 'oak', paver: 'travertine',
+  conc: 'conc', grass: 'grass', frame: 'steel', wood: 'teak', casing: 'white',
+};
+const mat = new Proxy(MAT, { get: (t, k) => { if (!(k in t)) throw new Error('casa.js: mat.' + String(k) + ' sin equivalente'); return t[k]; } });
+const M = () => 'stairSteel';                                 // el acero de los peldaños (k 'stair')
+
+const parts = [];
+export const footWalls = [];                                  // muros de planta baja con cimiento: { a:[x,z], b:[x,z], t }
+const LV = [2.55, 5.35];                                      // alturas absolutas donde se corta cada caja (ninguna cruza niveles)
+const lvlOfY = (y) => (y < LV[0] ? 0 : y < LV[1] ? 1 : 2);
+
+const rect = (x0, y0, x1, y1) => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];   // igual que index.html línea 489
+
+function put(b, m, k, extra = {}) {
+  if (b[3] - b[0] < 1e-4 || b[4] - b[1] < 1e-4 || b[5] - b[2] < 1e-4) return null;
+  const p = { t: 'box', b, m, k, lvl: lvlOfY((b[1] + b[4]) / 2), ...extra };
+  parts.push(p); return p;
+}
+// una caja cortada en las alturas de nivel
+function putCut(b, m, k, extra) {
+  const ys = [b[1], ...LV.filter((y) => y > b[1] + 1e-6 && y < b[4] - 1e-6), b[4]];
+  for (let i = 0; i < ys.length - 1; i++) put([b[0], ys[i], b[2], b[3], ys[i + 1], b[5]], m, k, extra);
+}
+
+// recorte de huecos de la referencia (world.js 486–499): a0..a1 a lo largo, b0..b1 en altura
+const carve = (a0, a1, b0, b1, holes) => {
+  const cuts = [...new Set([a0, a1, ...holes.flatMap((h) => [h[0], h[1]])].filter((v) => v >= a0 && v <= a1))].sort((p, q) => p - q);
+  const out = [];
+  for (let i = 0; i < cuts.length - 1; i++) {
+    const p0 = cuts[i], p1 = cuts[i + 1], mid = (p0 + p1) / 2;
+    const hs = holes.filter((h) => h[0] < mid && h[1] > mid).map((h) => [h[2], h[3]]).sort((p, q) => p[0] - q[0]);
+    let y = b0;
+    for (const [q0, q1] of hs) { if (q0 > y) out.push([p0, p1, y, q0]); y = Math.max(y, q1); }
+    if (y < b1) out.push([p0, p1, y, b1]);
+  }
+  return out;
+};
+
+function floor(pts, m, y = 0, parent = scene, holes = []) {
+  const p = { t: 'floor', pts: pts.map((q) => W2(...q)), holes: holes.map((h) => h.map((q) => W2(...q))), m, y, lvl: y < 2.5 ? 0 : y < 5.3 ? 1 : 2 };
+  parts.push(p); return p;
+}
+function slab(outer, holes, y, d, m, parent) {
+  const p = { t: 'slab', outer: outer.map((q) => W2(...q)), holes: holes.map((h) => h.map((q) => W2(...q))), y, d, m, k: 'slab', lvl: y < 4 ? 1 : y < 6.5 ? 2 : 3 };
+  parts.push(p); return p;
+}
+// devuelve el objeto de la parte: si el bloque le pone visible = false se descarta (casaParts lo filtra)
+function box(w, h, d, px, py, yb, m, parent = riseGrp, ry = 0) {
+  const [x, z] = W2(px, py);
+  const b = [x - w / 2, yb, z - d / 2, x + w / 2, yb + h, z + d / 2];
+  let k = 'struct', mm = m;
+  if (m === 'stairSteel') { k = 'stair'; mm = 'steel'; }
+  else if (parent.n === 'perg') k = 'pergola';
+  else if (parent.n === 'up2' && m === 'steel') k = 'columna';
+  else if (parent.n === 'up2' && m === 'teak') k = 'pergola';
+  return put(b, mm, k, { st: parent.n === 'paIn' ? 2 : 1 }) || {};
+}
+
+// vidrio con cancelería, como glazing() de index.html líneas 550–558: parteluces ≤1.5 m de 5 cm, travesaños y vidrio de 2 cm
+function glazing(ax, c, t, u0, u1, y0, y1, transom) {
+  const w = u1 - u0, dp = Math.max(0.05, t * 0.55);
+  const bx = (a0, a1, q0, q1, dd, m, k) => (ax === 0 ? put([a0, q0, c - dd / 2, a1, q1, c + dd / 2], m, k) : put([c - dd / 2, q0, a0, c + dd / 2, q1, a1], m, k));
+  bx(u0, u1, y0, y1, 0.02, 'glass', 'glass');
+  const n = Math.max(1, Math.ceil(w / 1.5));
+  for (let i = 0; i <= n; i++) { const x = u0 + w * i / n; bx(x - 0.025, x + 0.025, y0, y1, dp, 'steel', 'frame'); }
+  bx(u0, u1, y0, y0 + 0.05, dp, 'steel', 'frame'); bx(u0, u1, y1 - 0.05, y1, dp, 'steel', 'frame');
+  if (transom && transom < y1) bx(u0, u1, transom - 0.025, transom + 0.025, dp, 'steel', 'frame');
+}
+// puertas: solo jambas y cabezal (como door() de index.html 571–573), sin hojas
+function doorFrame(ax, c, t, u0, u1, hd, type, y0) {
+  const dd = t + 0.02, m = type === 'main' || type === 'ext' ? 'steel' : 'white';
+  const bx = (a0, a1, q0, q1) => (ax === 0 ? put([a0, q0, c - dd / 2, a1, q1, c + dd / 2], m, 'dframe') : put([c - dd / 2, q0, a0, c + dd / 2, q1, a1], m, 'dframe'));
+  bx(u0, u0 + 0.04, y0, y0 + hd); bx(u1 - 0.04, u1, y0, y0 + hd); bx(u0, u1, y0 + hd - 0.04, y0 + hd);
+}
+
+/* muro: a,b en plano; open = [[ini, fin, tipo, antepecho, dintel, giro, abierta]] medidos desde a (el sentido puede ser negativo) */
+function wall(a, b, o = {}) {
+  const { h = 2.55, t = 0.15, base = 0, open = [], m = mat.wall, transom } = o;
+  const A = W2(...a), B = W2(...b);
+  const ax = Math.abs(B[0] - A[0]) >= Math.abs(B[1] - A[1]) ? 0 : 1;   // 0: corre en x, 1: corre en z
+  const c = A[1 - ax], sg = Math.sign(B[ax] - A[ax]) || 1, lo = Math.min(A[ax], B[ax]), hi = Math.max(A[ax], B[ax]);
+  const abs = (o_) => A[ax] + sg * o_;
+  const barda = m === 'block' || (base === 0 && a[1] === 19.93 && b[1] === 19.93);
+  const holes = [], ops = [];
+  for (const [o0, o1, type, sill = 0, head] of open) {
+    const hd = head ?? (type === 'glass' ? h : type === 'window' ? 2.3 : 2.2);
+    const u0 = Math.min(abs(o0), abs(o1)), u1 = Math.max(abs(o0), abs(o1));
+    holes.push([u0, u1, base + sill, base + hd]); ops.push({ u0, u1, type, sill, hd });
+  }
+  for (const [p0, p1, q0, q1] of carve(lo, hi, base, base + h, holes)) {
+    const bb = ax === 0 ? [p0, q0, c - t / 2, p1, q1, c + t / 2] : [c - t / 2, q0, p0, c + t / 2, q1, p1];
+    putCut(bb, m, barda ? 'barda' : 'struct');
+  }
+  for (const { u0, u1, type, sill, hd } of ops) {
+    if (type === 'window' || type === 'glass') glazing(ax, c, t, u0, u1, base + sill, base + hd, transom);
+    else if (type === 'door' || type === 'doorR' || type === 'main' || type === 'ext') doorFrame(ax, c, t, u0, u1, hd, type, base);
+  }
+  if (base === 0 && h > 1.5) footWalls.push({ a: A, b: B, t });
+  return {};
+}
+
+// ================================================================ inicio del bloque copiado
+floor([[0, 0], [9.03, 0], [9.03, 3.65], [1.43, 3.65], [1.43, 18.21], [0, 18.21]], mat.grass, 0.0);
+floor([[1.43, 3.65], [9.03, 3.65], [9.03, 0], [12.49, 0], [12.49, 13.86], [5.79, 13.86], [5.79, 18.21], [1.43, 18.21]], mat.tile, 0.005);
+floor(rect(6.97, 13.86, 12.49, 19.93), mat.conc, 0.004);
+floor(rect(5.79, 13.86, 6.97, 19.93), mat.paver, 0.004);
+floor(rect(0, 18.21, 5.79, 19.93), mat.grass, 0.0);
+
+/* ---------- alturas (N.P.T. del plano) ---------- */
+const H1 = 2.55, F1 = 2.80, H2 = 2.55, F2 = 5.60, F3 = 8.20, LOSA = .25;
+
+/* ---------- planta baja: muros (leídos del plano ARQ-01) ---------- */
+const EXT = .2, PB = { h: H1 };
+// envolvente
+wall([1.43, 3.65], [1.43, 8.26], { h: F2 - LOSA, t: EXT });
+wall([1.43, 8.26], [1.43, 18.21], { h: H1, t: EXT, open: [[1.14, 2.04, 'window', .9, 2.2], [4.22, 6.13, 'window', .9, 2.2]] });   // puerta comedor-jardín, ventana oficina
+// fachada de la sala al jardín: el ventanal llega solo hasta la altura libre de planta baja (H1) y arriba, en la doble altura, es muro con cuatro ventanas chicas de .90 × .90 (de 3.60 a 4.50 m) centradas en los cuatro claros de la carpintería de abajo
+wall([1.43, 3.65], [7.56, 3.65], { h: H1, t: EXT, cap: false, open: [[0.07, 6.06, 'glass', 0]] });                              // ventanal de planta baja
+wall([1.43, 3.65], [7.56, 3.65], { h: F2 - LOSA - H1, base: H1, t: EXT, open: [.82, 2.31, 3.81, 5.31].map(c => [c - .45, c + .45, 'window', 1.05, 1.95]) });   // muro con ventanas chicas
+wall([7.56, 3.65], [9.03, 3.65], { h: H1, t: EXT, open: [[0.47, 1.42, 'ext', 0, 2.2, -1, 1.45]] });                              // puerta cocina-jardín
+wall([9.03, 0], [9.03, 2.63], { h: H1, t: EXT, open: [[0.15, 1.0, 'ext', 0, 2.2, -1, 1.45]] });                                  // puerta jardín-lavado
+wall([9.03, 2.63], [9.03, 3.65], { h: H1, t: EXT, open: [[0.05, 0.97, 'glass', 0, 2.3]] });
+wall([9.03, 0], [12.49, 0], { h: H1, t: EXT });
+wall([12.49, 0], [12.49, 13.86], { h: H1, t: EXT });
+wall([12.49, 13.86], [12.49, 19.93], { h: H1, t: EXT, m: mat.fence });
+wall([6.97, 13.86], [12.49, 13.86], { h: H1, t: EXT, open: [[0.54, 1.48, 'door', 0, 2.2, -1, -1.45], [4.63, 5.28, 'doorR', 0, 2.2, -1, -1.45]] });  // cochera → vestíbulo, herramientas
+wall([6.97, 13.86], [6.97, 19.93], { h: H1, t: .15 });
+wall([1.43, 18.21], [5.79, 18.21], { h: H1, t: EXT, open: [[2.3, 3.3, 'window', 1.7, 2.2]] });
+wall([5.79, 11.82], [5.79, 13.86], { h: H1, t: EXT, open: [[0.03, 1.04, 'door', 0, 2.2, 1, -1.45]] });                            // oficina desde vestíbulo
+wall([5.79, 13.86], [5.79, 18.21], { h: H1, t: EXT, m: mat.woodClad });            // acceso independiente oficina
+wall([5.79, 13.86], [6.97, 13.86], { h: H1, t: EXT, open: [[0.06, 1.12, 'main', 0, 2.35, 1, 1.4]] });                              // puerta principal (por confirmar)
+// interiores
+wall([1.43, 11.82], [5.79, 11.82], PB);
+wall([4.42, 11.82], [4.42, 12.49], PB);
+wall([1.43, 16.61], [5.79, 16.61], { ...PB, open: [[0.05, 0.8, 'door', 0, 2.2, 1, -1.45], [3.45, 4.28, 'doorR', 0, 2.2, 1, 1.45]] });
+wall([2.97, 16.61], [2.97, 18.21], PB);
+wall([9.03, 2.55], [12.49, 2.55], { ...PB, open: [[0.1, 1.04, 'door', 0, 2.2, -1, 1.45]] });
+wall([9.03, 7.08], [9.03, 8.26], PB);
+wall([9.03, 7.08], [12.49, 7.08], { ...PB, open: [[0.74, 1.37, 'open']] });
+wall([9.03, 8.26], [12.49, 8.26], PB);
+wall([9.03, 11.82], [12.49, 11.82], PB);
+wall([9.03, 11.82], [9.03, 13.86], { ...PB, open: [[0.03, 0.86, 'door', 0, 2.2, -1, 1.45]] });
+wall([10.82, 11.82], [10.82, 13.86], PB);
+// bardas de colindancia
+wall([0, 0], [0, 19.93], { h: 2.4, t: .15, m: mat.fenceL });
+wall([0, 0], [9.03, 0], { h: 2.4, t: .15, m: mat.fence });
+// barda al pie del terreno con acceso peatonal y portón eléctrico
+wall([0, 19.93], [5.85, 19.93], { h: 2.1, t: .2, m: mat.wall });
+wall([6.88, 19.93], [7.02, 19.93], { h: 2.1, t: .2, m: mat.wall });
+wall([5.79, 19.93], [12.49, 19.93], { base: 2.1, h: H1 - 2.1, t: .2, m: mat.wall });   // dintel bajo la losa
+
+/* escalera en U: 17 peraltes de 0.165 hasta N.P.T. 2.80 */
+{
+  const rh = F1 / 17, t1 = (11.44 - 9.2) / 8, t2 = (11.44 - 9.2) / 9, st = M({ color: 0x3a3b3e, roughness: .4, metalness: .55 });   // acero sin poché: en planta se lee como escalera, no como muro
+  for (let i = 0; i < 8; i++) box(t1 + .02, .06, 1.7, 9.2 + t1 * (i + .5), 10.97, (i + 1) * rh - .06, st, scene);
+  box(1.0, .16, 3.56, 11.94, 10.04, 8 * rh - .16, st, scene);
+  for (let j = 0; j < 9; j++) box(t2 + .02, .06, 1.7, 11.44 - t2 * (j + .5), 9.11, (9 + j) * rh - .06, st, scene);
+  box(.02, .9, 3.56, 9.2, 10.04, 0, st, scene).visible = false;
+}
+
+/* ---------- losa N.P.T. 2.80 y planta alta (envolvente) ---------- */
+slab([[1.43, 8.26], [7.56, 8.26], [7.56, 0], [12.49, 0], [12.49, 19.93], [5.79, 19.93], [5.79, 18.21], [1.43, 18.21]],
+  [rect(9.1, 8.36, 12.39, 11.72)], H1, LOSA, mat.wall, up1);
+// envolvente de planta alta según ARQ-02: el bloque de la recámara 3 arranca en el eje D" (7.56)
+const UP = { base: F1, h: H2, t: EXT, parent: up1, cap: false };
+wall([7.56, 0], [7.56, 8.26], { ...UP, t: .15, open: [[2.0, 3.45, 'window', .9, 2.2]] });        // ventana de la salita al jardín
+wall([7.56, 0], [12.49, 0], { ...UP, open: [[1.0, 3.5, 'window', 1.6, 2.2]] });
+wall([12.49, 0], [12.49, 19.93], UP);
+wall([12.49, 19.93], [9.86, 19.93], { ...UP, open: [[0.6, 2.0, 'window', 1.4, 2.2]] });
+wall([9.86, 19.93], [9.86, 18.69], UP);
+wall([9.86, 18.69], [5.79, 18.69], { ...UP, open: [[0.52, 1.9, 'open', 0, 2.35], [1.9, 3.62, 'glass', 0, 2.35]] });            // cancel corredizo al balcón
+wall([5.79, 18.69], [5.79, 18.21], UP);
+wall([5.79, 18.21], [1.43, 18.21], { ...UP, open: [[1.4, 4.14, 'window', 1.0, 2.2]] });           // ventana del vestidor 2
+wall([1.43, 18.21], [1.43, 8.26], { ...UP, open: [[4.2, 6.2, 'window', .9, 2.2]] });               // ventana de la recámara 2
+wall([1.43, 8.26], [7.56, 8.26], { ...UP, h: 1.0, t: .04, open: [[0, 6.13, 'glass', 0, 1.0]] });   // barandal al vacío
+wall([5.79, 19.93], [9.86, 19.93], { ...UP, h: 1.0, t: .04, open: [[0, 4.07, 'glass', 0, 1.0]] }); // balcón
+
+/* ---------- planta alta: muros interiores, puertas, pisos y escalera a la terraza (ARQ-02) ---------- */
+const paIn = new THREE.Group(); up1.add(paIn);          // interiores de planta alta: solo se dibujan cuando hacen falta
+const PAI = { base: F1, h: H2, t: .12, parent: paIn, cap: false };
+wall([7.56, 1.80], [12.49, 1.80], { ...PAI, open: [[0.08, 0.88, 'door', 0, 2.2, 1, 1.45]] });                     // baño R3, desde la salita
+wall([10.25, 1.80], [10.25, 3.63], PAI);                                                     // vestidor R3
+wall([10.25, 3.63], [12.49, 3.63], { ...PAI, open: [[0.08, 0.8, 'door', 0, 2.2, 1, 1.45]] });
+wall([7.56, 8.23], [12.49, 8.23], { ...PAI, open: [[0.08, 0.98, 'doorR', 0, 2.2, 1, 1.45]] });                    // recámara 3, desde el pasillo
+wall([8.71, 7.56], [8.71, 8.23], PAI);                                                       // remate del clóset
+wall([1.43, 11.80], [5.79, 11.80], { ...PAI, open: [[3.52, 4.28, 'doorR', 0, 2.2, 1, 1.45]] });                   // recámara 2
+wall([5.79, 11.80], [5.79, 18.21], PAI);
+wall([1.43, 16.14], [3.91, 16.14], PAI);                                                     // vestidor R2
+wall([3.91, 16.14], [3.91, 18.21], { ...PAI, open: [[1.1, 1.9, 'door', 0, 2.2, 1, -1.45]] });
+wall([5.79, 13.84], [12.49, 13.84], { ...PAI, open: [[0.07, 1.01, 'door', 0, 2.2, 1, -1.45]] });                   // recámara principal
+wall([9.83, 13.84], [9.83, 18.69], { ...PAI, open: [[0.08, 0.81, 'door', 0, 2.2, 1, 1.45]] });                    // vestidor principal
+wall([9.83, 16.14], [12.49, 16.14], { ...PAI, open: [[0.07, 0.82, 'door', 0, 2.2, 1, -1.45]] });                   // baño principal, desde el vestidor
+wall([9.21, 11.80], [9.21, 13.84], { ...PAI, open: [[0.14, 0.95, 'door', 0, 2.2, 1, 1.45]] });                    // baño completo
+wall([9.21, 11.80], [12.49, 11.80], PAI);
+wall([8.71, 12.80], [9.21, 12.80], PAI); wall([8.71, 12.80], [8.71, 13.84], PAI);              // ducto
+{
+  const pf = (pts, m) => floor(pts, m, F1 + .006, paIn);
+  pf([[1.43, 8.26], [9.1, 8.26], [9.1, 11.8], [9.21, 11.8], [9.21, 13.84], [5.79, 13.84], [5.79, 11.8], [1.43, 11.8]], mat.tile);   // sala TV y pasillo
+  pf(rect(7.56, 1.8, 12.49, 8.23), mat.tile); pf(rect(1.43, 11.8, 5.79, 18.21), mat.tile); pf(rect(5.79, 13.84, 9.83, 18.69), mat.tile); pf(rect(9.83, 13.84, 12.49, 16.14), mat.tile);
+  pf(rect(5.79, 18.69, 9.86, 19.93), mat.paver);                                                      // balcón
+  // escalera a la terraza: mismo trazo en U, una planta más arriba
+  const rh = (F2 - F1) / 17, t1 = (11.44 - 9.2) / 8, t2 = (11.44 - 9.2) / 9, st = M({ color: 0x3a3b3e, roughness: .4, metalness: .55 });
+  for (let i = 0; i < 8; i++) box(t1 + .02, .06, 1.7, 9.2 + t1 * (i + .5), 10.97, F1 + (i + 1) * rh - .06, st, paIn);
+  box(1.0, .16, 3.56, 11.94, 10.04, F1 + 8 * rh - .16, st, paIn);
+  for (let j = 0; j < 9; j++) box(t2 + .02, .06, 1.7, 11.44 - t2 * (j + .5), 9.11, F1 + (9 + j) * rh - .06, st, paIn);
+}
+
+/* ---------- losa N.P.T. 5.60: terraza (ARQ-03) y azotea N.P.T. 8.20 ---------- */
+// huecos: escalera y vaso del jacuzzi (la losa peraltada lo recibe sin bajar el plafón de la recámara 3)
+const JAC = rect(8.12, 4.34, 9.62, 5.81);
+slab([[1.43, 3.65], [7.56, 3.65], [7.56, 0], [12.49, 0], [12.49, 20.69], [4.79, 20.69], [4.79, 18.21], [1.43, 18.21]],
+  [rect(9.1, 8.36, 12.39, 11.72), JAC], F2 - LOSA, LOSA, mat.wall, up2);
+const up3 = new THREE.Group(); up2.add(up3);   // losa de azotea: se oculta cuando la cámara pasa por encima
+const perg = new THREE.Group(); up2.add(perg);  // vigas y listones de la pérgola: fuera de la lámina 03 (su sombra pintaría el piso)
+const HT = F3 - LOSA - F2;                     // 2.35 m libres bajo la azotea
+// pretiles: barandal de vidrio al jardín, al poniente y a la calle; muros de privacidad junto al jacuzzi
+const PAR = { base: F2, h: 1.0, t: .15, parent: up2, cap: false }, RAIL = { ...PAR, t: .04 };
+wall([1.43, 3.65], [8.68, 3.65], { ...RAIL, open: [[0, 7.25, 'glass', 0, 1.0]] });
+wall([8.68, 3.65], [12.49, 3.65], { ...PAR, h: 1.2 });
+wall([12.49, 3.65], [12.49, 8.14], { ...PAR, h: 1.2 });
+wall([1.43, 3.65], [1.43, 14.6], { ...RAIL, open: [[0, 10.95, 'glass', 0, 1.0]] });
+wall([1.43, 14.6], [1.43, 18.21], PAR);
+wall([1.43, 18.21], [4.79, 18.21], PAR);
+wall([4.79, 18.21], [4.79, 20.69], { ...RAIL, open: [[0, 2.48, 'glass', 0, 1.0]] });
+wall([4.79, 20.69], [12.49, 20.69], { ...RAIL, open: [[0, 7.7, 'glass', 0, 1.0]] });
+wall([12.49, 16.47], [12.49, 20.69], PAR);
+wall([7.56, 0], [12.49, 0], { ...PAR, h: .45 });
+wall([7.56, 0], [7.56, 3.65], { ...PAR, h: .45 });
+wall([12.49, 0], [12.49, 3.65], { ...PAR, h: .45 });
+// volumen bajo la azotea: vestíbulo, lavandería, baño, oficina y archivo
+const VOL = { base: F2, h: HT, t: EXT, parent: up2, cap: false };
+wall([5.67, 8.14], [12.49, 8.14], VOL);
+wall([12.49, 8.14], [12.49, 16.47], VOL);
+wall([12.49, 16.47], [7.45, 16.47], { ...VOL, open: [[0.16, 2.29, 'glass', 0, 2.1]] });   // cancel corredizo de la oficina a la terraza del frente
+wall([7.45, 16.47], [7.45, 14.93], VOL);
+wall([7.45, 14.93], [5.67, 14.93], VOL);
+wall([5.67, 14.93], [5.67, 8.14], { ...VOL, open: [[3.98, 5.3, 'open', 0, 2.1], [5.3, 6.71, 'glass', 0, 2.1]] });     // cancel corredizo del vestíbulo a la terraza poniente
+const TI = { base: F2, h: HT, t: .12, parent: up2, cap: false };
+wall([8.9, 9.39], [8.9, 13.7], { ...TI, open: [[3.28, 4.16, 'doorR', 0, 2.1, 1, -1.45]] });   // cubo de la escalera; lavandería
+wall([8.9, 11.75], [12.49, 11.75], TI);
+wall([7.5, 13.7], [12.49, 13.7], { ...TI, open: [[0.13, 0.99, 'door', 0, 2.1, 1, -1.45]] });   // oficina, desde el vestíbulo
+wall([5.67, 13.32], [7.5, 13.32], { ...TI, open: [[0.08, 0.85, 'door', 0, 2.1, 1, -1.45]] });  // baño
+wall([7.5, 13.32], [7.5, 14.93], TI);
+wall([7.45, 14.93], [8.96, 14.93], TI);                                                       // archivo
+wall([8.96, 14.93], [8.96, 16.47], { ...TI, open: [[0.58, 1.22, 'doorR', 0, 2.1, 1, 1.45]] });
+slab([[5.57, 8.04], [12.59, 8.04], [12.59, 16.57], [7.35, 16.57], [7.35, 15.03], [5.57, 15.03]], [], F3 - LOSA, LOSA, mat.wall, up3);
+// pérgola sobre asador y bar; celosía de madera hacia el jacuzzi
+{
+  const top = F2 + 2.55;
+  [[1.55, 3.77], [7.19, 3.77], [1.55, 7.52], [7.19, 7.52]].forEach(([x, y]) => box(.12, 2.55, .12, x, y, F2, mat.frame, up2));
+  box(5.76, .14, .1, 4.37, 3.77, top - .14, mat.frame, perg); box(5.76, .14, .1, 4.37, 7.52, top - .14, mat.frame, perg);
+  for (let x = 1.6; x < 7.2; x += .24) box(.05, .12, 3.98, x, 5.64, top, mat.wood, perg);
+  for (let y = 3.88; y < 5.4; y += .1) box(.06, 2.41, .04, 7.19, y, F2, mat.wood, up2);
+}
+
+// ================================================================ fin del bloque copiado
+
+export { H1, F1, F2, F3, LOSA, JAC };
+export const toW = W2;
+export const ESC = rect(9.1, 8.36, 12.39, 11.72);        // hueco de la escalera en las losas 2.80 y 5.60 (igual que en el bloque, líneas 638 y 687)
+
+// partes de obra que index.html no tiene (cimentación, firme, portones, acabado de la terraza y agua del jacuzzi)
+function extras() {
+  const out = [];
+  // firme de planta baja, 10 cm (y -0.10..0): interior, cochera y andador (los polígonos de los pisos de las líneas 579–581)
+  for (const pts of [
+    [[1.43, 3.65], [9.03, 3.65], [9.03, 0], [12.49, 0], [12.49, 13.86], [5.79, 13.86], [5.79, 18.21], [1.43, 18.21]],
+    rect(6.97, 13.86, 12.49, 19.93), rect(5.79, 13.86, 6.97, 19.93),
+  ]) out.push({ t: 'slab', outer: pts.map((q) => W2(...q)), holes: [], y: -0.10, d: 0.10, m: 'conc', k: 'firme', lvl: 0 });
+  // zapata corrida 0.90 x 0.20 (y -0.90..-0.70) y contratrabe 0.20 x 0.60 (y -0.70..-0.10) bajo cada muro de planta baja
+  const seen = new Set();
+  for (const { a, b } of footWalls) {
+    const ax = Math.abs(b[0] - a[0]) >= Math.abs(b[1] - a[1]) ? 0 : 1, c = a[1 - ax];
+    const lo = Math.min(a[ax], b[ax]), hi = Math.max(a[ax], b[ax]);
+    const key = [ax, Math.round(c * 100), Math.round(lo * 100), Math.round(hi * 100)].join('|');
+    if (seen.has(key)) continue; seen.add(key);
+    for (const [w, e, y0, y1, k] of [[0.90, 0.45, -0.90, -0.70, 'zapata'], [0.20, 0.10, -0.70, -0.10, 'contra']]) {
+      const bb = ax === 0 ? [lo - e, y0, c - w / 2, hi + e, y1, c + w / 2] : [c - w / 2, y0, lo - e, c + w / 2, y1, hi + e];
+      out.push({ t: 'box', b: bb, m: 'conc', k, lvl: 0 });
+    }
+  }
+  // portón de la cochera 5.45 x 2.08 en P(9.755, 19.95), y 0.02..2.10 (index.html 732–735) y puerta peatonal 0.97 x 2.08 en P(6.85, 19.95)
+  {
+    const [gx, gz] = W2(9.755, 19.95), [px, pz] = W2(6.85, 19.95);
+    out.push({ t: 'box', b: [gx - 2.725, 0.02, gz - 0.03, gx + 2.725, 2.10, gz + 0.03], m: 'walnut', k: 'gate', lvl: 0, g: 'cochera' });
+    out.push({ t: 'box', b: [px - 0.97, 0.0, pz - 0.025, px, 2.08, pz + 0.025], m: 'steel', k: 'gate', lvl: 0, g: 'peatonal' });
+  }
+  // acabado de la terraza: el contorno de la losa 5.60 menos el vaso del jacuzzi y la escalera, a F2 + 6 mm
+  out.push({
+    t: 'floor', m: 'travertine', y: F2 + 0.006, lvl: 2,
+    pts: [[1.43, 3.65], [7.56, 3.65], [7.56, 0], [12.49, 0], [12.49, 20.69], [4.79, 20.69], [4.79, 18.21], [1.43, 18.21]].map((q) => W2(...q)),
+    holes: [ESC, JAC].map((h) => h.map((q) => W2(...q))),
+  });
+  // agua del jacuzzi, 9 cm bajo el deck
+  out.push({ t: 'floor', m: 'water', y: F2 - 0.09, lvl: 2, pts: JAC.map((q) => W2(...q)), holes: [] });
+  return out;
+}
+
+// todas las partes de la casa: cajas, losas y acabados de piso
+export function casaParts() {
+  return [...parts.filter((p) => p.visible !== false), ...extras()];
+}
