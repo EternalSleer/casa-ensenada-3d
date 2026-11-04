@@ -113,7 +113,7 @@ function wall(a, b, o = {}) {
     if (type === 'window' || type === 'glass') glazing(ax, c, t, u0, u1, base + sill, base + hd, transom);
     else if (type === 'door' || type === 'doorR' || type === 'main' || type === 'ext') doorFrame(ax, c, t, u0, u1, hd, type, base);
   }
-  if (base === 0 && h > 1.5) footWalls.push({ a: A, b: B, t });
+  if (base === 0 && h > 1.5) footWalls.push({ a: A, b: B, t, barda });
   return {};
 }
 
@@ -277,6 +277,141 @@ export { H1, F1, F2, F3, LOSA, JAC };
 export const toW = W2;
 export const ESC = rect(9.1, 8.36, 12.39, 11.72);        // hueco de la escalera en las losas 2.80 y 5.60 (igual que en el bloque, líneas 638 y 687)
 
+
+// ================================================================ cimentación (cimRuns)
+// Frente de obra global: del jardín a la calle y un poco de poniente a oriente (afín: se interpola exacto en un polígono).
+const sOfZ = (z) => Math.max(0, Math.min(1, (z + CZ) / 20.69));
+export const Fhat = (x, z) => Math.max(0, Math.min(1, (1.2 * sOfZ(z) + 0.35 * ((x + CX) / 12.49)) / 1.55));
+// semana local de una corrida: el colado avanza a lo largo del eje (de su extremo más temprano al más tardío)
+export function runW(run, x, z) {
+  const w = run.Wd, u = run.ax === 0 ? x : z;
+  const t = Math.max(0, Math.min(1, ((u - w.u0) * w.dir) / w.len));
+  return w.base + w.d * t;
+}
+const WID = { carga: { pl: 1.0, za: 0.9, co: 0.2 }, int: { pl: 0.8, za: 0.7, co: 0.2 }, barda: { pl: 0.6, za: 0.5, co: 0.15 }, pil: { pl: 0.9, za: 0.8, co: 0.3 } };
+const YRG = {
+  carga: { pl: [-1.06, -0.995], za: [-1.0, -0.8], co: [-0.81, -0.04] }, int: null,
+  barda: { pl: [-0.66, -0.595], za: [-0.60, -0.45], co: [-0.46, -0.02] },
+  pil: { pl: [-1.06, -0.995], za: [-1.0, -0.75], co: [-0.76, -0.04] },
+};
+YRG.int = YRG.carga;
+const YFONDO = { carga: -1.05, int: -1.05, barda: -0.65, pil: -1.05 };
+const RANK = { carga: 3, int: 2, barda: 1, pil: 0 };
+const OFFL = { pl: 0.010, za: 0.005, co: 0 };       // lo que sobresale la pieza del paño exterior en un lindero (escalonado: nada en el mismo plano)
+const FREE = { pl: 0.35, za: 0.30, co: 0.10 };      // extremo libre
+const PIECES = ['pl', 'za', 'co'];
+// franja transversal [u0, u1] de una pieza
+function spanOf(run, p) {
+  const w = WID[run.tipo][p];
+  if (run.lind && p !== 'co') {
+    const o = run.c + run.lind * (run.t / 2 + OFFL[p]);
+    return run.lind > 0 ? [o - w, o] : [o, o + w];
+  }
+  return [run.c - w / 2, run.c + w / 2];
+}
+// rectángulo de mundo [x0, z0, x1, z1] de una pieza en el intervalo [a, b] de su eje
+export function rectOf(run, p, [a, b]) {
+  const s = run.sp[p];
+  return run.ax === 0 ? [a, s[0], b, s[1]] : [s[0], a, s[1], b];
+}
+export const ovl = (r, q) => Math.min(r[2], q[2]) - Math.max(r[0], q[0]) > 1e-6 && Math.min(r[3], q[3]) - Math.max(r[1], q[1]) > 1e-6;
+export const subtractIv = (list, a, b) => {
+  const out = [];
+  for (const [x, y] of list) {
+    if (b <= x || a >= y) { out.push([x, y]); continue; }
+    if (a > x + 1e-6) out.push([x, a]);
+    if (b < y - 1e-6) out.push([b, y]);
+  }
+  return out;
+};
+let RUNS = null;
+export function cimRuns() {
+  if (RUNS) return RUNS;
+  // 1. agrupar por (eje, línea, tipo) y fusionar intervalos que se tocan
+  const groups = new Map();
+  for (const w of footWalls) {
+    const ax = Math.abs(w.b[0] - w.a[0]) >= Math.abs(w.b[1] - w.a[1]) ? 0 : 1, c = w.a[1 - ax];
+    const tipo = w.barda ? 'barda' : w.t >= 0.195 ? 'carga' : 'int';
+    const key = [ax, Math.round(c * 100), tipo].join('|');
+    if (!groups.has(key)) groups.set(key, { ax, c, tipo, t: 0, ivs: [] });
+    const g = groups.get(key); g.t = Math.max(g.t, w.t); g.ivs.push([Math.min(w.a[ax], w.b[ax]), Math.max(w.a[ax], w.b[ax])]);
+  }
+  const runs = [];
+  for (const g of groups.values()) {
+    g.ivs.sort((p, q) => p[0] - q[0]);
+    const m = [];
+    for (const iv of g.ivs) { const l = m[m.length - 1]; if (l && iv[0] <= l[1] + 0.05) l[1] = Math.max(l[1], iv[1]); else m.push([...iv]); }
+    for (const [lo, hi] of m) runs.push({ ax: g.ax, c: g.c, t: g.t, tipo: hi - lo < 0.40 ? 'pil' : g.tipo, lo, hi });
+  }
+  for (const r of runs) {
+    r.lind = 0;
+    const L = r.ax === 0 ? CZ : CX;
+    if (Math.abs(r.c - L) < 0.01) r.lind = 1; else if (Math.abs(r.c + L) < 0.01) r.lind = -1;
+    r.Y = YRG[r.tipo]; r.sp = {}; r.iv = {}; r.ext = {};
+    r.dy = 0.002 * (3 - RANK[r.tipo]) + (r.ax === 1 ? 0.001 : 0);   // las coronas de corridas que se cruzan difieren unos milímetros: ninguna cara comparte plano
+    for (const p of PIECES) r.sp[p] = spanOf(r, p);
+  }
+  // 2. extremos: llegan a las corridas perpendiculares (esquinas llenas); libres, se alargan
+  const arrives = (R, P, u) => P.ax !== R.ax && Math.abs(P.c - u) <= 0.15 && R.c >= P.lo - 0.05 && R.c <= P.hi + 0.05;
+  const onLind = (R, u) => Math.abs(Math.abs(u) - (R.ax === 0 ? CX : CZ)) < 0.01;
+  for (const R of runs) for (const p of PIECES) {
+    if (R.tipo === 'pil') { const m = (R.lo + R.hi) / 2, w = WID.pil[p]; R.iv[p] = [[m - w / 2, m + w / 2]]; R.ext[p] = [m - w / 2, m + w / 2]; continue; }
+    let lo = R.lo, hi = R.hi;
+    for (const [end, sgn] of [['lo', -1], ['hi', 1]]) {
+      const u = R[end], ps = runs.filter((P) => P !== R && arrives(R, P, u));
+      let v;
+      if (ps.length) v = sgn < 0 ? Math.min(u, ...ps.map((P) => P.sp[p][0])) : Math.max(u, ...ps.map((P) => P.sp[p][1]));
+      else v = onLind(R, u) ? u : u + sgn * FREE[p];
+      if (sgn < 0) lo = v; else hi = v;
+    }
+    R.iv[p] = [[lo, hi]]; R.ext[p] = [lo, hi];
+  }
+  // 3. pilastras dentro de la zapata de otra corrida: la corrida ya las carga
+  for (const P of runs) if (P.tipo === 'pil') {
+    const m = (P.lo + P.hi) / 2, cx = P.ax === 0 ? m : P.c, cz = P.ax === 0 ? P.c : m;
+    P.dropped = runs.some((R) => R.tipo !== 'pil' && R.iv.za.some((iv) => { const r = rectOf(R, 'za', iv); return cx > r[0] && cx < r[2] && cz > r[1] && cz < r[3]; }));
+  }
+  const live = runs.filter((r) => !r.dropped);
+  // 4. recortar cruces: gana el rango mayor (carga > int > barda); en empate pierde la corrida en z. La perdedora penetra 1 cm en la ganadora.
+  for (const p of PIECES) for (const L of live) for (const W of live) {
+    if (L === W) continue;
+    const win = RANK[W.tipo] > RANK[L.tipo] || (RANK[W.tipo] === RANK[L.tipo] && L.ax === 1 && W.ax === 0);
+    if (!win) continue;
+    for (const jv of W.iv[p]) {
+      const rw = rectOf(W, p, jv);
+      for (const iv of [...L.iv[p]]) {
+        if (!ovl(rectOf(L, p, iv), rw)) continue;
+        const [a, b] = W.ax === L.ax ? jv : W.sp[p];
+        L.iv[p] = subtractIv(L.iv[p], a + 0.01, b - 0.01).filter(([x, y]) => y - x > 0.04);   // sin astillas
+      }
+    }
+  }
+  // 5. semanas y cepas
+  for (const R of live) {
+    const pa = R.ax === 0 ? [R.lo, R.c] : [R.c, R.lo], pb = R.ax === 0 ? [R.hi, R.c] : [R.c, R.hi];
+    let f0 = Fhat(...pa), f1 = Fhat(...pb), u0 = R.lo, dir = 1;
+    if (f1 < f0) { [f0, f1] = [f1, f0]; u0 = R.hi; dir = -1; }
+    const len = Math.max(0.01, R.hi - R.lo);
+    R.Wd = { base: 1.2 * f0, d: R.tipo === 'pil' ? 0 : Math.max(0, Math.min(0.9, Math.max(1.2 * (f1 - f0), 0.04 * len))), u0, dir, len };
+    const s = R.sp.za, [e0, e1] = R.ext.za;
+    let cs;
+    if (R.tipo === 'pil') { const s2 = R.sp.pl; cs = R.lind ? (R.lind > 0 ? [s2[0] - 0.30, s2[1] + 0.03] : [s2[0] - 0.03, s2[1] + 0.30]) : [R.c - 0.6, R.c + 0.6]; }
+    else cs = R.lind ? (R.lind > 0 ? [s[0] - 0.30, s[1] + 0.03] : [s[0] - 0.03, s[1] + 0.30]) : [s[0] - 0.30, s[1] + 0.30];
+    const ca = R.tipo === 'pil' ? [e0 - 0.15, e1 + 0.15] : [e0 - 0.30, e1 + 0.30];
+    R.cepa = R.ax === 0 ? [ca[0], cs[0], ca[1], cs[1]] : [cs[0], ca[0], cs[1], ca[1]];
+    R.yFondo = YFONDO[R.tipo];
+  }
+  // 6. puntos de anclaje de castillos: extremos y cruces de corridas
+  const pts = [], add = (x, z) => { if (!pts.some((q) => Math.hypot(q[0] - x, q[1] - z) < 0.35)) pts.push([x, z]); };
+  for (const R of live) {
+    if (R.tipo === 'pil') { const m = (R.lo + R.hi) / 2; if (R.ax === 0) add(m, R.c); else add(R.c, m); continue; }
+    if (R.ax === 0) { add(R.lo, R.c); add(R.hi, R.c); } else { add(R.c, R.lo); add(R.c, R.hi); }
+  }
+  for (const R of live) if (R.ax === 0 && R.tipo !== 'pil') for (const P of live) if (P.ax === 1 && P.tipo !== 'pil' && P.c >= R.lo - 0.05 && P.c <= R.hi + 0.05 && R.c >= P.lo - 0.05 && R.c <= P.hi + 0.05) add(P.c, R.c);
+  RUNS = runs; RUNS.anchors = pts;
+  return RUNS;
+}
+
 // partes de obra que index.html no tiene (cimentación, firme, portones, acabado de la terraza y agua del jacuzzi)
 function extras() {
   const out = [];
@@ -285,16 +420,17 @@ function extras() {
     [[1.43, 3.65], [9.03, 3.65], [9.03, 0], [12.49, 0], [12.49, 13.86], [5.79, 13.86], [5.79, 18.21], [1.43, 18.21]],
     rect(6.97, 13.86, 12.49, 19.93), rect(5.79, 13.86, 6.97, 19.93),
   ]) out.push({ t: 'slab', outer: pts.map((q) => W2(...q)), holes: [], y: -0.10, d: 0.10, m: 'conc', k: 'firme', lvl: 0 });
-  // zapata corrida 0.90 x 0.20 (y -0.90..-0.70) y contratrabe 0.20 x 0.60 (y -0.70..-0.10) bajo cada muro de planta baja
-  const seen = new Set();
-  for (const { a, b } of footWalls) {
-    const ax = Math.abs(b[0] - a[0]) >= Math.abs(b[1] - a[1]) ? 0 : 1, c = a[1 - ax];
-    const lo = Math.min(a[ax], b[ax]), hi = Math.max(a[ax], b[ax]);
-    const key = [ax, Math.round(c * 100), Math.round(lo * 100), Math.round(hi * 100)].join('|');
-    if (seen.has(key)) continue; seen.add(key);
-    for (const [w, e, y0, y1, k] of [[0.90, 0.45, -0.90, -0.70, 'zapata'], [0.20, 0.10, -0.70, -0.10, 'contra']]) {
-      const bb = ax === 0 ? [lo - e, y0, c - w / 2, hi + e, y1, c + w / 2] : [c - w / 2, y0, lo - e, c + w / 2, y1, hi + e];
-      out.push({ t: 'box', b: bb, m: 'conc', k, lvl: 0 });
+  // cimentación: zapatas corridas, excéntricas de lindero, contratrabes y zapata aislada (ver cimRuns)
+  for (const run of cimRuns()) {
+    if (run.dropped) continue;
+    for (const [piece, k, t0, tg] of [['za', 'zapata', 2.15, 0.06], ['co', 'contra', 3.05, 0.10]]) {
+      const y0 = run.Y[piece][0], y1 = run.Y[piece][1] - run.dy;
+      const wk = (x, y, z) => t0 + runW(run, x, z) + tg * Math.max(0, Math.min(1, (y - y0) / (y1 - y0)));
+      for (const iv of run.iv[piece]) {
+        const r = rectOf(run, piece, iv);
+        if (r[2] - r[0] < 1e-3 || r[3] - r[1] < 1e-3) continue;
+        out.push({ t: 'box', b: [r[0], y0, r[1], r[2], y1, r[3]], m: 'conc', k, lvl: 0, wk });
+      }
     }
   }
   // portón de la cochera 5.45 x 2.08 en P(9.755, 19.95), y 0.02..2.10 (index.html 732–735) y puerta peatonal 0.97 x 2.08 en P(6.85, 19.95)

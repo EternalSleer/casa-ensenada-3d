@@ -135,7 +135,7 @@ const V_END = LEGS[LEGS.length - 1].v1;   // 29.5, la entrega
 // la semana en cada punto del scroll. Al terminar la zambullida la obra va en la 4.1: las cepas siguen abiertas frente a la cámara.
 const W_DIVE = 4.1;
 const WEEK_KEYS = [
-  [6.0, W_DIVE], [6.7, 5.2], [10.4, 10.6], [12.8, 13.4], [15.2, 16.8], [16.2, 18.0], [17.2, 18.6], [18.9, 19.6],
+  [6.0, W_DIVE], [6.9, 6.0], [10.4, 10.6], [12.8, 13.4], [15.2, 16.8], [16.2, 18.0], [17.2, 18.6], [18.9, 19.6],
   [20.5, 21.5], [22.6, 23.6], [24.6, 27.0], [26.0, 31.0], [27.4, 33.5], [28.5, 36.0], [29.0, 38.0], [29.5, 40.0],
 ];
 function weekAt(v) {
@@ -225,7 +225,7 @@ function lightFor(week) {
 const screenRect = () => ({ x: 0, y: 0, w: W, h: H });
 pipe.draw(TILES.map((t, i) => ({ rect: REST[i], cam: K0, now: t.w1, newFrom: t.w0 })));
 setP(0.78); await raf();
-for (const w of [WEEKS, 18, W_DIVE]) {
+for (const w of [WEEKS, 18, W_DIVE, 2.5]) {
   U.real.value = w; lightFor(w); renderer.shadowMap.needsUpdate = true;
   pipe.real({ cam: w === WEEKS ? KW : K3, rect: screenRect() });
 }
@@ -272,9 +272,9 @@ let sv = scrollY / innerHeight, last = OFFLINE ? 0 : performance.now();
 // notas dentro del dibujo 01, con un halo de papel para que ninguna línea atraviese el texto. Puntos [x, altura, y] del plano.
 const NOTES = [
   { p: PL(6.4, 0, 16.9), t: '±0.00 N.P.T. PLANTA BAJA', dx: 26, dy: -30 },
-  { p: PL(3.0, -0.95, 11.82), t: '-0.95 FONDO DE CEPA', dx: -26, dy: 30 },
-  { p: PL(1.43, -0.8, 6.0), t: 'ZAPATA CORRIDA 0.90 × 0.20 M', dx: -28, dy: 40, acc: true },
-  { p: PL(12.49, -0.4, 9.0), t: 'CONTRATRABE 0.20 × 0.60 M', dx: 24, dy: 34 },
+  { p: PL(3.0, -1.05, 11.82), t: '-1.05 FONDO DE CEPA', dx: -26, dy: 30 },
+  { p: PL(1.43, -0.80, 6.0), t: 'ZAPATA CORRIDA 0.90 × 0.20 M', dx: -28, dy: 40, acc: true },
+  { p: PL(12.49, -0.4, 9.0), t: 'CONTRATRABE 0.20 × 0.77 M', dx: 24, dy: 34 },
   { p: PL(6.2, 0, 19.93), t: 'EJE 9 · CALLE', dx: -22, dy: 28 },
   { p: PL(4.5, 0, 0), t: 'EJE 1 · JARDÍN', dx: 24, dy: -28 },
 ];
@@ -310,7 +310,8 @@ function chipFor(v, week, pour, diving) {
   if (v > DIVE + 0.5) {
     if (week >= 39.8) return 'Semana 40 &nbsp;//&nbsp; <i>Entrega</i>';
     const n = propsAt(week);
-    if (week < 6.2) return wk + '<i>Firme de planta baja</i>';
+    if (week < 5.25) return wk + '<i>Relleno compactado en capas</i>';
+    if (week < 6.2) return wk + '<i>Firme de planta baja · 10 cm</i>';
     if (week < 10) return wk + `<i>${rowOf(week)}</i>`;
     if (week < 13.4) return wk + `<i>Cimbra y colado · losa N.P.T. 2.80${n ? ` · ${n} puntales` : ''}</i>`;
     if (week < 16.8) return wk + '<i>Muros de planta alta</i>';
@@ -324,8 +325,8 @@ function chipFor(v, week, pour, diving) {
     if (week < 37.2) return wk + '<i>Cocina · isla y bancos</i>';
     return wk + '<i>Sala · doble altura</i>';
   }
-  if (v > DIVE * 0.93) return 'Semana 05 &nbsp;//&nbsp; <i>Cepas abiertas · zapatas colocadas</i>';
-  if (pour > 0) { const w = clamp(Math.ceil(pour), 1, 5); return `Semana ${pad(w)} &nbsp;//&nbsp; <i>${w <= 2 ? 'Excavación' : 'Cimentación'}</i>`; }
+  if (v > DIVE * 0.93) return 'Semana 05 &nbsp;//&nbsp; <i>Colado de contratrabes</i>';
+  if (pour > 0) { const w = clamp(Math.ceil(pour), 1, 5); return `Semana ${pad(w)} &nbsp;//&nbsp; <i>${w <= 1 ? 'Trazo y excavación' : w === 2 ? 'Excavación y plantilla' : w === 3 ? 'Armado y colado de zapatas' : 'Cimbra y colado de contratrabes'}</i>`; }
   if (diving) return 'Dibujo 01 &nbsp;//&nbsp; Excavación y cimentación &nbsp;//&nbsp; <i>Sem 01–05</i>';
   return '';
 }
@@ -361,9 +362,9 @@ function frame(now) {
   const coverH = Rl.h * sC;
   if (!ending) {
     z = ease(sm(0.035, 0.24, ps)); c = sm(0.23, 0.40, ps);
-    pour = lerp(-0.8, 5.6, clamp((ps - 0.40) / 0.185, 0, 1));
-    l = clamp((ps - 0.585) / (0.975 - 0.585), 0, 1);
-    week = sv > DIVE ? weekAt(sv) : W_DIVE;
+    pour = lerp(-0.8, 5.6, clamp((ps - 0.36) / 0.30, 0, 1));
+    l = clamp((ps - 0.62) / (0.975 - 0.62), 0, 1);
+    week = sv > DIVE ? weekAt(sv) : clamp(pour - 0.3, 0, W_DIVE);
     realOnly = pour >= 5.55;
     k = c > 0 ? lerpK(K0, K1, c) : K0;
     if (l > 0) k = lerpK(K1, K3, l, { f: sm(0, 0.62, l), e: sm(0.22, 1, l), T: sm(0.18, 1, l), h: sm(0.18, 1, l) });

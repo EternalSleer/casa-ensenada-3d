@@ -5,7 +5,7 @@
 // Las partes de la casa salen de casa.js (el bloque de arquitectura copiado de index.html); aquí solo se les pone semana.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { casaParts, footWalls, CX, CZ } from './casa.js';
+import { casaParts, CX, CZ, cimRuns, Fhat, runW, rectOf, ovl, subtractIv } from './casa.js';
 
 export const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -358,7 +358,14 @@ const WEEKLY = (s) => {
   s.vertexShader = s.vertexShader.replace('void main() {', 'uniform float uNow; attribute float aWeek; attribute float aOut; varying float vWk; varying float vOt;\nvoid main() {\n  vWk = aWeek; vOt = aOut;');
   s.fragmentShader = s.fragmentShader.replace('void main() {', 'uniform float uNow; varying float vWk; varying float vOt;\nvoid main() {\n  if (vWk > uNow + 1e-4 || (vOt > .5 && uNow >= vOt)) discard;');
 };
-export function weekly(m) { m.onBeforeCompile = WEEKLY; m.customProgramCacheKey = () => 'weekly'; return m; }
+// wet: el concreto recién colado se ve oscuro y húmedo y se aclara en ~0.6 semanas
+const WEEKLY_WET = (s) => {
+  WEEKLY(s);
+  s.fragmentShader = s.fragmentShader
+    .replace('#include <map_fragment>', '#include <map_fragment>\n  diffuseColor.rgb *= mix(.68, 1., smoothstep(0., .6, uNow - vWk));')
+    .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n  roughnessFactor *= mix(.5, 1., smoothstep(0., .6, uNow - vWk));');
+};
+export function weekly(m, o = {}) { m.onBeforeCompile = o.wet ? WEEKLY_WET : WEEKLY; m.customProgramCacheKey = () => (o.wet ? 'weekly-wet' : 'weekly'); return m; }
 export const DEPTH_WEEKLY = weekly(new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking }));
 
 export function makeMaterials(T, env) {
@@ -417,6 +424,7 @@ export function makeMaterials(T, env) {
     wire: std({ map: T.wire, alphaTest: 0.5, side: THREE.DoubleSide, metalness: 0.6, roughness: 0.48 }),
     net: std({ map: T.net, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.65, envMapIntensity: 0.15 }),
     block: std({ map: T.conc, color: 0xa8a59e, roughness: 0.9 }),
+    fill: std({ map: T.soil, color: 0xd6c3a0, bumpMap: T.soilBump, bumpScale: 0.012, roughness: 0.97, envMapIntensity: 0.12 }),
     blinding: std({ map: T.concFresh, color: 0x96938c, roughness: 0.92 }),
     cabin: std({ color: 0xe8e5de, roughness: 0.55 }),
     cabinTrim: std({ color: 0x2f363b, roughness: 0.55 }),
@@ -432,7 +440,7 @@ export function makeMaterials(T, env) {
     water: std({ color: 0x5fb3c9, roughness: 0.08, metalness: 0.1, envMapIntensity: 0.9 }),
     concPol: std({ map: T.concFresh, color: 0xdedbd2, roughness: 0.4, envMapIntensity: 0.4 }),
   };
-  for (const k in R) weekly(R[k]);
+  for (const k in R) weekly(R[k], { wet: k === 'conc' });
   return R;
 }
 
@@ -471,10 +479,9 @@ const sOf = (z) => clamp((z + CZ) / 20.69, 0, 1);
 const aff = (a, b, c = 0, y0 = 0, hy = 1) => (x, y, z) => a + b * sOf(z) + c * clamp((y - y0) / hy, 0, 1);
 
 function partWeeks(p) {
+  if (p.wk) return p.wk;   // zapatas y contratrabes traen su semana (tramos a lo largo del eje, casa.js)
   switch (p.k) {
-    case 'zapata': return aff(2.0, 1.4, 0.1, -0.90, 0.20);
-    case 'contra': return aff(3.3, 1.1, 0.15, -0.70, 0.60);
-    case 'firme': return aff(5.0, 0.9);
+    case 'firme': return (x, y, z) => 4.6 + 1.6 * Fhat(x, z);
     case 'slab': return p.lvl === 1 ? aff(11.2, 1.4) : p.lvl === 2 ? aff(17.0, 1.2) : aff(21.6, 0.9);
     case 'stair': return p.st === 2 ? aff(16.6, 0, 0.5, 2.8, 2.8) : aff(13.4, 0, 0.5, 0, 2.8);
     case 'barda': return aff(8.4, 1.4, 0.2, 0, 2.4);
@@ -946,6 +953,196 @@ export function canopy(clusters, s0, s1) {
   return merge(list);
 }
 
+
+// ---------------------------------------------------------------- la cimentación por dentro: trazo, niveletas, plantilla, acero, cimbra
+// Todo es solo de la obra real (el dibujo muestra la cepa, la zapata y la contratrabe). Una geometría por material.
+// Regla: ninguna cara queda en el mismo plano que la de otra pieza (se meten 5–10 mm o se separan ≥ 2 cm).
+function foundationKit(group, R, samples) {
+  const runs = cimRuns().filter((r) => !r.dropped);
+  const huellas = casaParts().filter((p) => p.k === 'firme').map((p) => p.outer);
+  const newAcc = () => ({ pos: [], nor: [], wk: [], out: [] });
+  const K = { pl: newAcc(), rebar: newAcc(), cap: newAcc(), ply: newAcc(), timber: newAcc(), cal: newAcc() };
+  const val = (f, x, y, z) => (typeof f === 'function' ? f(x, y, z) : f);
+  const vert = (A, x, y, z, n, wk, out) => { A.pos.push(x, y, z); A.nor.push(n[0], n[1], n[2]); A.wk.push(val(wk, x, y, z)); A.out.push(val(out, x, y, z)); };
+  const box = (A, x0, y0, z0, x1, y1, z1, wk, out = 0) => {
+    for (const f of FACES) {
+      const q = f.c.map((c) => [c[0] ? x1 : x0, c[1] ? y1 : y0, c[2] ? z1 : z0]);
+      for (const i of [0, 1, 2, 0, 2, 3]) vert(A, q[i][0], q[i][1], q[i][2], f.n, wk, out);
+    }
+  };
+  // tronco de cono / cilindro de n lados (abierto; tapa opcional arriba) entre dos puntos
+  const frustum = (A, p0, p1, r0, r1, wk, out, n = 6, cap = false) => {
+    const d = V(p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]), L = d.length(); d.divideScalar(L);
+    const u = Math.abs(d.y) > 0.9 ? V(1, 0, 0) : V(0, 1, 0).cross(d).normalize(), v = d.clone().cross(u);
+    const pt = (i, r, p) => { const a = (i / n) * Math.PI * 2; return [p[0] + (u.x * Math.cos(a) + v.x * Math.sin(a)) * r, p[1] + (u.y * Math.cos(a) + v.y * Math.sin(a)) * r, p[2] + (u.z * Math.cos(a) + v.z * Math.sin(a)) * r]; };
+    for (let i = 0; i < n; i++) {
+      const am = ((i + 0.5) / n) * Math.PI * 2, nn = [u.x * Math.cos(am) + v.x * Math.sin(am), u.y * Math.cos(am) + v.y * Math.sin(am), u.z * Math.cos(am) + v.z * Math.sin(am)];
+      const a0 = pt(i, r0, p0), a1 = pt(i + 1, r0, p0), b0 = pt(i, r1, p1), b1 = pt(i + 1, r1, p1);
+      for (const q of [a0, a1, b1, a0, b1, b0]) vert(A, q[0], q[1], q[2], nn, wk, out);
+      if (cap) for (const q of [p1, b0, b1]) vert(A, q[0], q[1], q[2], [d.x, d.y, d.z], wk, out);
+    }
+  };
+  const cyl = (A, p0, p1, r, wk, out) => frustum(A, p0, p1, r, r, wk, out, 6, false);
+  const rc = (run, p, iv) => rectOf(run, p, iv);
+  // caja en el marco de una corrida: u a lo largo del eje, q transversal
+  const boxA = (A, run, u0, u1, q0, q1, y0, y1, wk, out = 0) => { if (run.ax === 0) box(A, u0, y0, q0, u1, y1, q1, wk, out); else box(A, q0, y0, u0, q1, y1, u1, wk, out); };
+  const pos3 = (run, u, q, y) => (run.ax === 0 ? [u, y, q] : [q, y, u]);
+  const Wat = (run, u, q) => (run.ax === 0 ? runW(run, u, q) : runW(run, q, u));
+  const wf = (run, t0) => (x, y, z) => t0 + runW(run, x, z);
+  // recorta una lista de intervalos del eje de `run` donde llegan corridas perpendiculares (su franja de la pieza p, más 1 cm), solo si cruzan el rango transversal [q0, q1]
+  const cutAround = (run, list, q0, q1, p) => {
+    for (const J of runs) {
+      if (J === run || J.ax === run.ax) continue;
+      for (const iv of J.iv[p]) if (Math.min(iv[1], q1) - Math.max(iv[0], q0) > 1e-4) list = subtractIv(list, J.sp[p][0] - 0.01, J.sp[p][1] + 0.01);
+    }
+    return list.filter(([a, b]) => b - a > 0.05);
+  };
+  const place = (run, p, iv) => rc(run, p, iv);
+
+  // ---- plantilla
+  for (const run of runs) {
+    const y0 = run.Y.pl[0], y1 = run.Y.pl[1] - run.dy;
+    for (const iv of run.iv.pl) { const r = place(run, 'pl', iv); box(K.pl, r[0], y0, r[1], r[2], y1, r[3], wf(run, 1.15), 0); }
+  }
+  // ---- parrilla de zapata: transversales #4 @ 0.20 a -0.94 y longitudinales #3 @ 0.25 a -0.925
+  for (const run of runs) {
+    const [s0, s1] = run.sp.za;
+    for (const [a, b] of run.iv.za) {
+      if (b - a < 0.3) continue;
+      const n = Math.max(2, Math.floor((b - a - 0.2) / 0.2) + 1);
+      for (let i = 0; i < n; i++) {
+        const u = a + 0.1 + ((b - a - 0.2) * i) / (n - 1), W = Wat(run, u, (s0 + s1) / 2);
+        cyl(K.rebar, pos3(run, u, s0 + 0.05, -0.94), pos3(run, u, s1 - 0.05, -0.94), 0.0105, 1.45 + W, 2.51 + W);
+      }
+      const nl = Math.max(2, Math.ceil((s1 - s0 - 0.12) / 0.25) + 1);
+      for (let i = 0; i < nl; i++) {
+        const q = s0 + 0.06 + ((s1 - s0 - 0.12) * i) / (nl - 1);
+        cyl(K.rebar, pos3(run, a + 0.05, q, -0.925), pos3(run, b - 0.05, q, -0.925), 0.008, wf(run, 1.45), wf(run, 2.51));
+      }
+    }
+  }
+  // ---- jaula de contratrabe: 4 longitudinales #4 y estribos #2.5
+  for (const run of runs) {
+    const [s0, s1] = run.sp.co, cs = (s0 + s1) / 2, bd = run.tipo === 'barda';
+    const wd = bd ? 0.07 : 0.12, ys = bd ? [-0.40, -0.10] : [-0.74, -0.12], sw = bd ? 0.09 : 0.13, sy0 = bd ? -0.42 : -0.745, sy1 = bd ? -0.08 : -0.115, sp = bd ? 0.25 : 0.20;
+    for (const [a, b] of run.iv.co) {
+      for (const dq of [-wd / 2, wd / 2]) for (const y of ys) cyl(K.rebar, pos3(run, a + 0.04, cs + dq, y), pos3(run, b - 0.04, cs + dq, y), 0.009, wf(run, 1.65), wf(run, 3.45));
+      const n = Math.max(1, Math.floor((b - a - 0.1) / sp) + 1);
+      for (let i = 0; i < n; i++) {
+        const u = n === 1 ? (a + b) / 2 : a + 0.05 + ((b - a - 0.1) * i) / (n - 1), W = Wat(run, u, cs), wk = 1.65 + W, out = 3.45 + W, h = 0.006;
+        boxA(K.rebar, run, u - h, u + h, cs - sw / 2 - h, cs - sw / 2 + h, sy0, sy1, wk, out);
+        boxA(K.rebar, run, u - h, u + h, cs + sw / 2 - h, cs + sw / 2 + h, sy0, sy1, wk, out);
+        boxA(K.rebar, run, u - h, u + h, cs - sw / 2 + h, cs + sw / 2 - h, sy0 - h, sy0 + h, wk, out);
+        boxA(K.rebar, run, u - h, u + h, cs - sw / 2 + h, cs + sw / 2 - h, sy1 - h, sy1 + h, wk, out);
+      }
+    }
+  }
+  // ---- anclas de castillo con capuchón naranja
+  for (const [ax, az] of cimRuns().anchors) {
+    let W = 9;
+    for (const r of runs) { const c = r.cepa; if (ax >= c[0] && ax <= c[2] && az >= c[1] && az <= c[3]) W = Math.min(W, runW(r, ax, az)); }
+    if (W > 8) continue;
+    const out = 6.5 + 3.2 * clamp((az + CZ) / 20.69, 0, 1);
+    for (const dx of [-0.05, 0.05]) for (const dz of [-0.05, 0.05]) {
+      cyl(K.rebar, [ax + dx, -0.95, az + dz], [ax + dx, 0.60, az + dz], 0.008, 1.65 + W, out);
+      frustum(K.cap, [ax + dx, 0.60, az + dz], [ax + dx, 0.645, az + dz], 0.024, 0.018, 1.65 + W, out, 8, true);
+    }
+  }
+  // ---- fronteras de zapata: tablas de pino 0.025 x 0.25 a 5 mm del concreto, con estacas por fuera
+  for (const run of runs) {
+    const [s0, s1] = run.sp.za;
+    const sides = [];
+    if (run.lind >= 0) sides.push([s0 - 0.030, s0 - 0.005, s0 - 0.082, s0 - 0.028]);   // el lado del lindero no lleva cimbra
+    if (run.lind <= 0) sides.push([s1 + 0.005, s1 + 0.030, s1 + 0.028, s1 + 0.082]);
+    for (const [q0, q1, k0, k1] of sides) {
+      let list = cutAround(run, run.iv.za.map((v) => [...v]), q0, q1, 'za');
+      for (const [a, b] of list) {
+        boxA(K.timber, run, a, b, q0, q1, -1.0, -0.75 - run.dy, wf(run, 1.75), wf(run, 2.75));
+        const n = Math.max(1, Math.round((b - a) / 0.8));
+        for (let i = 0; i < n; i++) { const u = a + ((i + 0.5) * (b - a)) / n, W = Wat(run, u, q0); boxA(K.timber, run, u - 0.025, u + 0.025, k0, k1, -1.05, -0.70, 1.75 + W, 2.75 + W); }
+      }
+    }
+    // extremos libres
+    const others = runs.filter((J) => J !== run).flatMap((J) => J.iv.za.map((iv) => rectOf(J, 'za', iv)));
+    for (const iv of run.iv.za) for (const [u0, u1] of [[iv[0] - 0.030, iv[0] - 0.005], [iv[1] + 0.005, iv[1] + 0.030]]) {
+      const r = run.ax === 0 ? [u0, s0 - 0.03, u1, s1 + 0.03] : [s0 - 0.03, u0, s1 + 0.03, u1];
+      if (others.some((q) => ovl(r, q))) continue;
+      boxA(K.timber, run, u0, u1, run.lind < 0 ? s0 : s0 - 0.03, run.lind > 0 ? s1 : s1 + 0.03, -1.0, -0.75, wf(run, 1.75), wf(run, 2.75));
+    }
+  }
+  // ---- cimbra de contratrabe: triplay de 16 mm, barrotes cada 0.60 y yugos cada 1.20
+  for (const run of runs) {
+    const [s0, s1] = run.sp.co, ply = 0.016, gap = 0.005;
+    const sideDefs = [];
+    if (run.lind >= 0) sideDefs.push([s0 - gap - ply, s0 - gap, -1]);
+    if (run.lind <= 0) sideDefs.push([s1 + gap, s1 + gap + ply, 1]);
+    for (const [q0, q1, sg] of sideDefs) {
+      const list = cutAround(run, run.iv.co.map((v) => [...v]), q0, q1, 'co');
+      for (const [a, b] of list) {
+        boxA(K.ply, run, a, b, q0, q1, -0.80, -0.02 - run.dy, wf(run, 2.55), wf(run, 3.60));
+        const n = Math.max(1, Math.round((b - a) / 0.6));
+        for (let i = 0; i < n; i++) {
+          const u = a + ((i + 0.5) * (b - a)) / n, W = Wat(run, u, q0);
+          if (sg < 0) boxA(K.timber, run, u - 0.025, u + 0.025, q0 - 0.098, q0 + 0.002, -0.79, -0.03, 2.55 + W, 3.60 + W);
+          else boxA(K.timber, run, u - 0.025, u + 0.025, q1 - 0.002, q1 + 0.098, -0.79, -0.03, 2.55 + W, 3.60 + W);
+        }
+      }
+    }
+    // yugos sobre la corona
+    const qa = run.lind < 0 ? s0 : s0 - 0.119, qb = run.lind > 0 ? s1 : s1 + 0.119;
+    for (const [a, b] of cutAround(run, run.iv.co.map((v) => [...v]), s0, s1, 'co')) {
+      const n = Math.max(1, Math.round((b - a) / 1.2));
+      for (let i = 0; i < n; i++) {
+        const u = a + ((i + 0.5) * (b - a)) / n, W = Wat(run, u, s0);
+        boxA(K.timber, run, u - 0.025, u + 0.025, qa, qb, -0.033, 0.025, 2.55 + W, 3.60 + W);
+      }
+    }
+  }
+  // ---- niveletas: dos estacas y un travesaño a 1 m de cada extremo de corrida, fuera de huella, cepas y ruta de la cámara
+  const placed = [];
+  const inCepa = (x, z, m) => runs.some((r) => x > r.cepa[0] - m && x < r.cepa[2] + m && z > r.cepa[1] - m && z < r.cepa[3] + m);
+  for (const run of runs) {
+    if (run.tipo === 'pil') continue;
+    for (const [u, sg] of [[run.lo, -1], [run.hi, 1]]) {
+      const uu = u + sg * 1.0, x = run.ax === 0 ? uu : run.c, z = run.ax === 0 ? run.c : uu;
+      if (huellas.some((h) => inPoly(x, z, h)) || inCepa(x, z, 0.5) || placed.some((q) => Math.hypot(q[0] - x, q[1] - z) < 1.0)) continue;
+      if (samples.some((s) => Math.hypot(s.x - x, s.z - z) < 0.6)) continue;
+      placed.push([x, z]);
+      const wk = 0.05 + 0.30 * Fhat(x, z), out = 3.65 + runW(run, x, z);
+      for (const dq of [-0.5, 0.5]) boxA(K.timber, run, uu - 0.025, uu + 0.025, run.c + dq - 0.025, run.c + dq + 0.025, -0.30, 0.60, wk, out);
+      boxA(K.timber, run, uu - 0.0125, uu + 0.0125, run.c - 0.55, run.c + 0.55, 0.55, 0.65, wk, out);
+    }
+  }
+  // ---- trazo con cal: líneas de 5 cm sobre los bordes de cada cepa (se van cuando pasa la excavadora)
+  runs.forEach((run) => {
+    const c = run.cepa;
+    const insideOther = (x, z) => runs.some((r) => r !== run && x > r.cepa[0] + 0.02 && x < r.cepa[2] - 0.02 && z > r.cepa[1] + 0.02 && z < r.cepa[3] - 0.02);
+    const segs = [[c[0], c[1], c[2], c[1]], [c[0], c[3], c[2], c[3]], [c[0], c[1], c[0], c[3]], [c[2], c[1], c[2], c[3]]];
+    for (const [x0, z0, x1, z1] of segs) {
+      const len = Math.hypot(x1 - x0, z1 - z0), n = Math.max(1, Math.round(len / 0.4));
+      for (let i = 0; i < n; i++) {
+        const xa = x0 + ((x1 - x0) * i) / n, xb = x0 + ((x1 - x0) * (i + 1)) / n, za = z0 + ((z1 - z0) * i) / n, zb = z0 + ((z1 - z0) * (i + 1)) / n;
+        const mx = (xa + xb) / 2, mz = (za + zb) / 2;
+        if (insideOther(mx, mz)) continue;
+        const F = Fhat(mx, mz), E1 = 0.75 + runW(run, mx, mz), D = 0.55 + 0.5 * F;
+        const out = huellas.some((h) => inPoly(mx, mz, h)) ? Math.min(E1, D) : E1;
+        const hw = 0.025, hz = z0 === z1, wkc = 0.05 + 0.30 * F;
+        box(K.cal, hz ? Math.min(xa, xb) : xa - hw, -0.002, hz ? za - hw : Math.min(za, zb), hz ? Math.max(xa, xb) : xa + hw, 0.012, hz ? za + hw : Math.max(za, zb), wkc, out);
+      }
+    }
+  });
+  const mk = (A, mat, shadow) => {
+    if (!A.pos.length) return;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(A.pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(A.nor, 3));
+    g.setAttribute('aWeek', new THREE.Float32BufferAttribute(A.wk, 1)); g.setAttribute('aOut', new THREE.Float32BufferAttribute(A.out, 1));
+    worldUV(g);
+    addMesh(group, g, { main: mat, paper: null, nd: null }, { shadow });
+  };
+  mk(K.pl, R.blinding, false); mk(K.rebar, R.rebar, true); mk(K.cap, R.cap, false);
+  mk(K.ply, R.ply, true); mk(K.timber, R.timber, true); mk(K.cal, R.white, false);
+}
+
 // ---------------------------------------------------------------- build it
 export function buildWorld(o) {
   const { R, phone } = o;
@@ -955,6 +1152,7 @@ export function buildWorld(o) {
   // la casa: una geometría por material para la obra, líneas jerárquicas para el dibujo
   const ctx = buildHouse(group, R);
   ctx.samples = o.samples || [];
+  foundationKit(group, R, ctx.samples);
 
   // obra falsa: puntales y cimbra
   for (const E of PROPS) {
@@ -970,7 +1168,7 @@ export function buildWorld(o) {
   {
     const ex = excavatorGeo({ tip: V(5.35, 3.55, 0.12), wrist: V(5.85, 1.05, 0.12), bucket: -2.25 });
     const exg = new THREE.Group();
-    for (const k in ex) { stamp(ex[k], 0.3, 2.6); addMesh(exg, ex[k], realOnly(R[k]), { glass: k === 'cabGlass', shadow: k !== 'cabGlass' }); }
+    for (const k in ex) { stamp(ex[k], 0.3, 2.3); addMesh(exg, ex[k], realOnly(R[k]), { glass: k === 'cabGlass', shadow: k !== 'cabGlass' }); }
     exg.position.set(9.5 - CX, 0, 23 - CZ); exg.rotation.y = Math.PI / 2; group.add(exg);
   }
 
@@ -1030,68 +1228,108 @@ export function buildWorld(o) {
 // de altura {y, a, b, m}: de la semana a a la b está a la altura y. Entre celdas vecinas con alturas distintas se levantan caras
 // verticales. Para el dibujo se hace otra copia en que el relleno llega más tarde, para que la lámina 01 (semana 5) siga mostrando las cepas.
 const INF = 1e9;
+// polígono ortogonal ampliado d metros hacia afuera (esquinas a inglete)
+function growPoly(poly, d) {
+  let a = 0;
+  for (let i = 0; i < poly.length; i++) { const [x0, z0] = poly[i], [x1, z1] = poly[(i + 1) % poly.length]; a += x0 * z1 - x1 * z0; }
+  const sg = a > 0 ? 1 : -1, n = poly.length;
+  const nrm = (p, q) => { const ex = q[0] - p[0], ez = q[1] - p[1], l = Math.hypot(ex, ez) || 1; return [sg * ez / l, -sg * ex / l]; };
+  return poly.map((p, i) => {
+    const n1 = nrm(poly[(i + n - 1) % n], p), n2 = nrm(p, poly[(i + 1) % n]), k = d / (1 + n1[0] * n2[0] + n1[1] * n2[1]);
+    return [p[0] + (n1[0] + n2[0]) * k, p[1] + (n1[1] + n2[1]) * k];
+  });
+}
+// líneas de rejilla: uniformes más las especiales (nunca se quitan); se quitan las uniformes a menos de 3 cm de una especial
+function gridLines(a, b, step, special) {
+  const sp = [...special.filter((v) => v > a && v < b), a, b].sort((p, q) => p - q).filter((v, i, l) => !i || v - l[i - 1] > 0.004);
+  const uni = [];
+  for (let v = a; v <= b + 1e-9; v += step) if (!sp.some((s) => Math.abs(s - v) < 0.03)) uni.push(v);
+  return [...sp, ...uni].sort((p, q) => p - q);
+}
 function buildLand(o, R) {
   const { phone } = o;
   const step = phone ? 0.5 : 0.25;
   const X0 = -8, X1 = 8, Z0 = -12, Z1 = 12;
-  const nx = Math.round((X1 - X0) / step), nz = Math.round((Z1 - Z0) / step);
-  const firmes = casaParts().filter((p) => p.k === 'firme');
-  const huellas = firmes.map((p) => p.outer);
-  const cepas = footWalls.map(({ a, b }) => {
-    const ax = Math.abs(b[0] - a[0]) >= Math.abs(b[1] - a[1]) ? 0 : 1, c = a[1 - ax], lo = Math.min(a[ax], b[ax]) - 0.6, hi = Math.max(a[ax], b[ax]) + 0.6;
-    return ax === 0 ? [lo, c - 0.6, hi, c + 0.6] : [c - 0.6, lo, c + 0.6, hi];
-  });
-  const isHuella = (x, z) => huellas.some((h) => inPoly(x, z, h));
-  const isCepa = (x, z) => cepas.some((r) => x >= r[0] && x <= r[2] && z >= r[1] && z <= r[3]);
-  const ZSEC = 20.69;
-  const sOf2 = (z) => clamp((z + CZ) / ZSEC, 0, 1);
-  const history = (i, j, shift) => {
-    const cx = X0 + (i + 0.5) * step, cz = Z0 + (j + 0.5) * step, s = sOf2(cz);
-    const hu = isHuella(cx, cz), ce = isCepa(cx, cz);
-    const wd = 0.3 + 0.7 * s, wc = 0.3 + 1.7 * s, wr = 4.4 + 0.6 * s + shift;
-    if (!hu && !ce) return [{ y: 0, a: -2, b: INF, m: 'dry' }];
-    if (hu && !ce) return [{ y: 0, a: -2, b: wd, m: 'dry' }, { y: -0.20, a: wd, b: wr, m: 'soil' }, { y: -0.10, a: wr, b: INF, m: 'soil' }];
-    if (hu && ce) return [{ y: 0, a: -2, b: wd, m: 'dry' }, { y: -0.20, a: wd, b: wc, m: 'soil' }, { y: -0.95, a: wc, b: wr, m: 'clay' }, { y: -0.10, a: wr, b: INF, m: 'soil' }];
-    return [{ y: 0, a: -2, b: wc, m: 'dry' }, { y: -0.95, a: wc, b: wr, m: 'clay' }, { y: 0, a: wr, b: INF, m: 'soil' }];
+  const runs = cimRuns().filter((r) => !r.dropped);
+  const huellas = casaParts().filter((p) => p.k === 'firme').map((p) => growPoly(p.outer, 0.02));
+  const xs = gridLines(X0, X1, step, [...runs.flatMap((r) => [r.cepa[0], r.cepa[2]]), ...huellas.flatMap((h) => h.map((q) => q[0]))]);
+  const zs = gridLines(Z0, Z1, step, [...runs.flatMap((r) => [r.cepa[1], r.cepa[3]]), ...huellas.flatMap((h) => h.map((q) => q[1]))]);
+  const nx = xs.length - 1, nz = zs.length - 1;
+  // datos fijos de cada celda (por su centro, que es exacto: ninguna celda cruza un borde)
+  const cells = [];
+  for (let j = 0; j < nz; j++) {
+    const row = [], cz = (zs[j] + zs[j + 1]) / 2;
+    for (let i = 0; i < nx; i++) {
+      const cx = (xs[i] + xs[i + 1]) / 2;
+      const hu = huellas.some((h) => inPoly(cx, cz, h)), ce = runs.filter((r) => cx >= r.cepa[0] && cx <= r.cepa[2] && cz >= r.cepa[1] && cz <= r.cepa[3]);
+      row.push({ hu, ce, F: Fhat(cx, cz), W: ce.length ? Math.min(...ce.map((r) => runW(r, cx, cz))) : 0 });
+    }
+    cells.push(row);
+  }
+  // historia de una celda: tramos {y, a, b, m}. Cualquier tramo de tierra termina después de 0.55 (los shaders ignoran aOut <= 0.5).
+  const history = (c, shift) => {
+    const { hu, ce, F, W } = c;
+    if (!hu && !ce.length) return [{ y: 0, a: -2, b: INF, m: 'dry' }];
+    const D = 0.55 + 0.5 * F;
+    let st;
+    if (!ce.length) st = [[0, 'dry', -2], [-0.20, 'soil', D], [-0.10, 'fill', 4.0 + 1.2 * F + shift]];
+    else {
+      const E1 = 0.75 + W, E2 = E1 + 0.15, R1 = 3.75 + W + shift, R2 = 4.0 + W + shift;
+      const bardas = ce.every((r) => r.tipo === 'barda'), yF = Math.min(...ce.map((r) => r.yFondo));
+      st = [[0, 'dry', -2]];
+      if (hu && D < E1) st.push([-0.20, 'soil', D]);
+      st.push([bardas ? -0.35 : -0.50, 'clay', E1], [yF, 'clay', E2], [bardas ? -0.35 : -0.55, 'fill', R1], hu ? [-0.10, 'fill', R2] : [0, 'soil', R2]);
+    }
+    return st.map(([y, m, a], i) => ({ y, m, a, b: i + 1 < st.length ? st[i + 1][2] : INF }));
   };
+  const keyOf = (h) => h.map((s) => s.y + ',' + s.a.toFixed(3) + ',' + (s.b >= INF ? 'i' : s.b.toFixed(3)) + ',' + s.m).join(';');
   const at = (h, t) => { for (const s of h) if (t >= s.a && t < s.b) return s; return h[h.length - 1]; };
 
   const build = (shift) => {
     const B = {};
     const bucket = (m) => B[m] || (B[m] = { pos: [], nor: [], uv: [], wk: [], out: [], idx: [] });
+    // aOut = 0 significa "nunca sale"; los shaders ignoran aOut <= 0.5, así que ningún tramo termina antes de 0.51
     const quad = (m, pts, n, uvs, w0, w1) => {
       const b = bucket(m), base = b.pos.length / 3;
-      for (let k = 0; k < 4; k++) { b.pos.push(...pts[k]); b.nor.push(...n); b.uv.push(...uvs[k]); b.wk.push(w0); b.out.push(w1 >= INF ? 0 : w1); }
+      for (let k = 0; k < 4; k++) { b.pos.push(...pts[k]); b.nor.push(...n); b.uv.push(...uvs[k]); b.wk.push(w0); b.out.push(w1 >= INF ? 0 : Math.max(w1, 0.51)); }
       b.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
     };
-    const H = [];
-    for (let j = 0; j < nz; j++) { const row = []; for (let i = 0; i < nx; i++) row.push(history(i, j, shift)); H.push(row); }
-    for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
-      const xa = X0 + i * step, xb = xa + step, za = Z0 + j * step, zb = za + step;
-      for (const s of H[j][i]) quad(s.m, [[xa, s.y, za], [xa, s.y, zb], [xb, s.y, zb], [xb, s.y, za]], [0, 1, 0], [[xa, za], [xa, zb], [xb, zb], [xb, za]], s.a, s.b);
-      // caras verticales hacia el vecino de la derecha (x) y de atrás (z)
-      for (const [ni, nj, axis] of [[i + 1, j, 0], [i, j + 1, 1]]) {
-        if (ni >= nx || nj >= nz) continue;
-        const A = H[j][i], N = H[nj][ni];
-        const cuts = [...new Set([...A, ...N].flatMap((s) => [s.a, s.b]).filter((v) => v > -2 && v < INF))].sort((p, q) => p - q);
-        const edges = [-2, ...cuts, INF];
-        for (let e = 0; e < edges.length - 1; e++) {
-          const t0 = edges[e], t1 = edges[e + 1], tm = t1 >= INF ? t0 + 1 : (t0 + t1) / 2;
-          const sa = at(A, tm), sn = at(N, tm);
-          if (Math.abs(sa.y - sn.y) < 1e-4) continue;
-          const lowIsA = sa.y < sn.y, yLo = Math.min(sa.y, sn.y), yHi = Math.max(sa.y, sn.y);
-          const m = sa.m === 'clay' || sn.m === 'clay' ? 'clay' : 'soil';
-          let pts, n, uvs;
-          if (axis === 0) {   // plano x = xb, de za a zb; la cara mira hacia la celda más baja
-            pts = [[xb, yLo, za], [xb, yHi, za], [xb, yHi, zb], [xb, yLo, zb]]; n = [1, 0, 0];
-            if (lowIsA) { /* mira a -x (hacia A): invertir */ pts.reverse(); n = [-1, 0, 0]; }
-            uvs = pts.map((q) => [q[2], q[1]]);
-          } else {            // plano z = zb, de xa a xb
-            pts = [[xa, yLo, zb], [xb, yLo, zb], [xb, yHi, zb], [xa, yHi, zb]]; n = [0, 0, 1];
-            if (lowIsA) { pts.reverse(); n = [0, 0, -1]; }
-            uvs = pts.map((q) => [q[0], q[1]]);
+    const H = cells.map((row) => row.map((c) => history(c, shift))), K = H.map((row) => row.map(keyOf));
+    for (let j = 0; j < nz; j++) {
+      const za = zs[j], zb = zs[j + 1];
+      // fusión por filas: las celdas contiguas en x con la misma historia son un solo quad
+      for (let i = 0; i < nx;) {
+        let e = i; while (e + 1 < nx && K[j][e + 1] === K[j][i]) e++;
+        const xa = xs[i], xb = xs[e + 1];
+        for (const s of H[j][i]) quad(s.m, [[xa, s.y, za], [xa, s.y, zb], [xb, s.y, zb], [xb, s.y, za]], [0, 1, 0], [[xa, za], [xa, zb], [xb, zb], [xb, za]], s.a, s.b);
+        i = e + 1;
+      }
+      for (let i = 0; i < nx; i++) {
+        const xa = xs[i], xb = xs[i + 1];
+        // caras verticales hacia el vecino de la derecha (x) y de atrás (z)
+        for (const [ni, nj, axis] of [[i + 1, j, 0], [i, j + 1, 1]]) {
+          if (ni >= nx || nj >= nz || K[nj][ni] === K[j][i]) continue;
+          const A = H[j][i], N = H[nj][ni];
+          const cuts = [...new Set([...A, ...N].flatMap((s) => [s.a, s.b]).filter((v) => v > -2 && v < INF))].sort((p, q) => p - q);
+          const edges = [-2, ...cuts, INF];
+          for (let e = 0; e < edges.length - 1; e++) {
+            const t0 = edges[e], t1 = edges[e + 1], tm = t1 >= INF ? t0 + 1 : (t0 + t1) / 2;
+            const sa = at(A, tm), sn = at(N, tm);
+            if (Math.abs(sa.y - sn.y) < 1e-4) continue;
+            const lowIsA = sa.y < sn.y, yLo = Math.min(sa.y, sn.y), yHi = Math.max(sa.y, sn.y);
+            const m = sa.m === 'clay' || sn.m === 'clay' ? 'clay' : sa.m === 'fill' || sn.m === 'fill' ? 'fill' : 'soil';
+            let pts, n, uvs;
+            if (axis === 0) {   // plano x = xb, de za a zb; la cara mira hacia la celda más baja
+              pts = [[xb, yLo, za], [xb, yHi, za], [xb, yHi, zb], [xb, yLo, zb]]; n = [1, 0, 0];
+              if (lowIsA) { pts.reverse(); n = [-1, 0, 0]; }
+              uvs = pts.map((q) => [q[2], q[1]]);
+            } else {            // plano z = zb, de xa a xb
+              pts = [[xa, yLo, zb], [xb, yLo, zb], [xb, yHi, zb], [xa, yHi, zb]]; n = [0, 0, 1];
+              if (lowIsA) { pts.reverse(); n = [0, 0, -1]; }
+              uvs = pts.map((q) => [q[0], q[1]]);
+            }
+            quad(m, pts, n, uvs, t0, t1);
           }
-          quad(m, pts, n, uvs, t0, t1);
         }
       }
     }
@@ -1109,7 +1347,7 @@ function buildLand(o, R) {
   const out = [];
   // la obra: terreno de verdad
   const real = build(0);
-  for (const k of ['dry', 'soil', 'clay']) if (real[k]) out.push(landMesh(real[k], R[k], false, false));
+  for (const k of ['dry', 'soil', 'clay', 'fill']) if (real[k]) out.push(landMesh(real[k], R[k], false, false));
   // exterior lejano: cuatro lienzos de pasto seco hasta el horizonte
   {
     const E = 1800, list = [];
@@ -1125,7 +1363,7 @@ function buildLand(o, R) {
   // el dibujo: el relleno llega tarde, para que la lámina 01 conserve las cepas
   const drawn = build(1.3);
   if (drawn.dry) out.push(landMesh(drawn.dry, null, false, true));
-  const dn = [drawn.soil, drawn.clay].filter(Boolean);
+  const dn = [drawn.soil, drawn.clay, drawn.fill].filter(Boolean);
   if (dn.length) out.push(landMesh(merge(dn), null, true, true));
 
   // bloque de terreno con rayado de corte (solo en el dibujo)
