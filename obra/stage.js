@@ -29,6 +29,9 @@ export function buildStage(R) {
   // `piece` coloca geometrías en el mundo, les da UV en metros y manda las formas limpias a `drawn` (lámina 06)
   // y los accesorios finos a `real` (para que la lámina 06 no se sature).
   const piece = (bucket, list, x, y, z, ry, week, out = 0) => {
+    // el calendario de obra se alargó: los muebles se reparten de 34 a 39.5 (las semanas escritas abajo son las originales)
+    const RW = (w) => (w < 30 ? w : 34 + (w - 30.5) * (5.5 / 9));
+    week = RW(week); out = out ? RW(out) : 0;
     const m = new THREE.Matrix4().makeRotationY(ry).setPosition(x, y, z);
     for (const [mat, g, realOnlyItem] of list) {
       g.applyMatrix4(m);

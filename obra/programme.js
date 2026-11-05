@@ -5,17 +5,17 @@
   const WEEKS = 40;
   // [nombre, inicio, fin] en semanas, continuo: 0 es la primera mañana en obra, 40 es la entrega
   const PROG = [
-    ['Excavación', 0, 2], ['Cimentación', 2, 5], ['Firme y muros PB', 5, 10], ['Losa N.P.T. 2.80', 10, 13],
-    ['Muros de planta alta', 13, 16], ['Losa 5.60 y azotea', 16, 23], ['Cancelería', 23, 27], ['Acabados y muebles', 27, 40],
+    ['Excavación', 0, 2], ['Cimentación', 2, 6.2], ['Muros de block PB', 6.2, 10.6], ['Losa N.P.T. 2.80', 10.4, 13.6],
+    ['Muros de block PA', 13.2, 17.6], ['Losa N.P.T. 5.60', 17.2, 19.8], ['Terraza y azotea', 19.6, 24.4], ['Aplanados y acabados', 24.6, 40],
   ];
-  // los seis dibujos de la lámina OB-01, cada uno la casa al final de sus semanas
+  // los seis dibujos de la lámina OB-01, cada uno la casa al final de sus semanas (w0/w1 enteros: la leyenda dice "Sem w0+1–w1")
   const TILES = [
     { n: '01', name: 'Excavación y cimentación', w0: 0, w1: 5 },
-    { n: '02', name: 'Firme y muros PB', w0: 5, w1: 10 },
-    { n: '03', name: 'Losa N.P.T. 2.80', w0: 10, w1: 13 },
-    { n: '04', name: 'Muros de planta alta', w0: 13, w1: 16 },
-    { n: '05', name: 'Losa 5.60, terraza y azotea', w0: 16, w1: 23 },
-    { n: '06', name: 'Cancelería, acabados y entrega', w0: 23, w1: 40 },
+    { n: '02', name: 'Firme y muros de block PB', w0: 5, w1: 11 },
+    { n: '03', name: 'Losa N.P.T. 2.80', w0: 11, w1: 14 },
+    { n: '04', name: 'Muros de block PA', w0: 14, w1: 18 },
+    { n: '05', name: 'Losa 5.60, terraza y azotea', w0: 18, w1: 25 },
+    { n: '06', name: 'Aplanados, acabados y entrega', w0: 25, w1: 40 },
   ];
   const pad = (n) => String(n).padStart(2, '0');
   const SEQ = window.SEQ = { WEEKS, PROG, TILES, pad, progress: 0, real: false };

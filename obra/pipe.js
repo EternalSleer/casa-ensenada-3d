@@ -36,7 +36,7 @@ function useSet(scene, set) {
     const s = o.userData.sets;
     if (!s) { o.visible = set === 'main'; return; }
     const m = s[set];
-    if (!m) o.visible = false; else { o.visible = true; o.material = m; }
+    if (!m || (o.userData.hideFrom !== undefined && scene.userData.week >= o.userData.hideFrom)) o.visible = false; else { o.visible = true; o.material = m; }   // la obra gruesa se oculta cuando ya salió toda
   });
 }
 

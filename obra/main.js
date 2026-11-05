@@ -2,13 +2,15 @@
 // Secuencia de obra: un scroll por cuarenta semanas.
 // El cargador es el programa escribiéndose. La hoja se dibuja semana a semana (los seis dibujos a la vez, cada uno hasta su semana).
 // El scroll se zambulle en el dibujo 01 hasta la calle frente a las cepas y luego recorre la obra mientras la casa sube:
-// entra por la cochera, sube la escalera, cruza el bosque de puntales de la sala de doble altura, camina la terraza y el jardín,
+// piso por piso: la cimentación desde la calle, los muros de block de planta baja pegados hilada por hilada, la cimbra y el armado de la losa 2.80,
+// los muros de planta alta, el bosque de puntales de la sala de doble altura, la terraza y la azotea desde arriba, los aplanados, el jardín y la cocina,
 // y llega a la entrega en la semana 40; después se aleja hasta que la casa vuelve a ser el dibujo 06.
 //   ?v=12.5  salta a una posición del scroll, en alturas de pantalla      ?still   se salta el cargador y el dibujo, para fotos
 //   ?w=18    fuerza la semana de la obra                                  ?rays    revisa que la cámara no atraviese nada
 //   ?offline el reloj es virtual y tools/offline.mjs lo avanza un cuadro a la vez
 import * as THREE from 'three';
 import { makeTextures, makeMaterials, buildWorld, U, PROG, TILES, WEEKS, V, propsAt } from './world.js';
+import * as WORLD from './world.js';   // blocksAt es opcional: si world.js aún no lo exporta, el chip no cuenta piezas
 import { CX, CZ } from './casa.js';
 import { buildStage } from './stage.js';
 import { makePipe, aim } from './pipe.js';
@@ -99,25 +101,31 @@ const lerpK = (a, b, t, o = {}) => {
 // guion de la cámara por tramos de llaves [v, ojo x, ojo altura, ojo y, mira x, mira altura, mira y]; cada tramo arranca en la última llave del anterior
 const DIVE = 6; // la zambullida ocupa las primeras seis alturas de pantalla
 const TRAMOS = [
-  // 0 (v 6.0–10.4): de la calle frente a las cepas, al portón peatonal, a lo largo de la barda y por el portón de la cochera
-  [[6.0, 6.40, 1.62, 25.0, 6.30, -0.4, 15.5], [7.2, 6.37, 1.62, 22.6, 3.0, 0.8, 19.0], [8.0, 6.40, 1.62, 19.6, 1.0, 0.8, 19.0], [8.8, 6.40, 1.62, 20.6, 9.7, 1.2, 17.0],
-    [9.6, 9.70, 1.65, 20.9, 9.7, 1.4, 16.0], [10.4, 9.70, 1.65, 19.0, 9.6, 1.8, 14.4]],
-  // 1 (→12.8): dentro de la cochera, bajo la cimbra de la losa 2.80
-  [[11.4, 9.70, 1.62, 17.2, 9.7, 2.3, 14.6], [12.8, 8.00, 1.65, 14.6, 7.98, 1.6, 12.0]],
-  // 2 (→17.2): por la planta baja hasta la escalera y arriba, a la planta alta
-  [[13.4, 7.98, 1.65, 13.4, 7.3, 1.6, 11.0], [14.0, 7.30, 1.65, 12.4, 6.6, 1.6, 9.8], [14.6, 6.60, 1.65, 10.0, 4.8, 2.4, 6.0], [15.2, 6.80, 1.62, 7.4, 3.0, 2.8, 5.9],
-    [16.2, 5.00, 1.60, 5.95, 3.2, 1.9, 3.8], [17.2, 3.00, 1.62, 5.95, 3.4, 4.6, 7.6]],
-  // 3 (→22.6): la planta alta bajo el bosque de puntales, la escalera a la terraza y la azotea
-  [[17.9, 6.20, 1.65, 6.6, 7.7, 1.6, 10.0], [18.5, 7.70, 1.65, 10.2, 9.4, 1.7, 10.95], [18.9, 7.70, 1.60, 10.95, 11.2, 1.8, 10.95], [19.3, 10.40, 2.30, 10.95, 12.0, 2.5, 10.1],
-    [19.7, 11.85, 2.95, 10.2, 9.6, 3.9, 9.1], [20.1, 9.60, 4.35, 9.1, 6.5, 4.1, 9.7], [20.5, 9.00, 4.40, 9.2, 4.0, 3.0, 6.0], [21.0, 7.80, 4.40, 10.4, 9.2, 4.6, 10.95],
-    [21.3, 7.90, 4.40, 10.95, 11.2, 4.6, 10.95], [21.6, 10.40, 5.10, 10.95, 12.0, 5.3, 10.1], [21.9, 11.85, 5.75, 10.2, 9.6, 6.7, 9.1], [22.2, 9.60, 7.15, 9.1, 6.5, 6.9, 9.7],
-    [22.6, 9.00, 7.20, 9.2, 6.5, 6.9, 9.9]],
-  // 4 (→26.0): del volumen de la azotea sale por el cancel abierto del vestíbulo a la terraza poniente, la pérgola, el jacuzzi
-  [[23.2, 7.00, 7.20, 9.3, 4.8, 6.5, 10.3], [23.5, 6.10, 7.20, 10.3, 3.8, 6.4, 10.5], [23.9, 4.90, 7.20, 10.4, 3.0, 6.6, 9.0], [24.6, 5.00, 7.20, 9.6, 9.0, 6.2, 5.0], [25.4, 5.00, 7.20, 7.95, 4.5, 6.2, 4.0],
-    [26.0, 4.50, 7.25, 4.6, 4.5, 2.0, 0.5]],
-  // 5 (→29.5): de baja a la sala, el jardín, la cocina y la entrega
-  [[26.7, 4.50, 5.40, 1.8, 4.6, 2.6, 6.0], [27.4, 6.00, 1.70, 1.6, 4.4, 1.5, 6.0], [28.0, 8.50, 1.70, 2.6, 9.6, 1.1, 5.4], [28.5, 8.30, 1.75, 3.9, 9.9, 0.9, 5.4],
-    [29.0, 7.25, 1.70, 3.95, 2.0, 1.5, 7.8], [29.5, 7.20, 1.70, 8.1, 2.2, 1.5, 4.2]],
+  // A (v 6.0–9.6, sem 4.1→6.4) cimentación: de la calle por el andador hasta el vano de la puerta principal (contratrabes, anclas, relleno, firme)
+  [[6.0, 6.40, 1.62, 25.0, 6.30, -0.4, 15.5], [7.0, 6.55, 1.62, 22.4, 3.2, -0.6, 17.4], [7.9, 6.60, 1.62, 20.3, 9.6, -0.3, 16.6],
+    [8.8, 6.40, 1.64, 17.6, 4.2, 0.0, 14.6], [9.6, 6.40, 1.65, 14.8, 6.0, 0.6, 10.0]],
+  // B (→15.6, sem 6.4→10.6) muros PB: entra por el vano principal cuando el muro aún no arranca; acercamiento al muro y = 11.82 mientras se pega el block; sala y cocina
+  [[10.5, 6.38, 1.65, 12.6, 3.5, 1.0, 7.0], [11.4, 5.70, 1.55, 10.4, 4.6, 0.8, 11.82], [12.6, 4.60, 1.45, 10.5, 3.6, 0.9, 11.82],
+    [13.4, 3.60, 1.55, 9.6, 1.43, 1.3, 7.0], [14.4, 4.40, 1.62, 6.0, 4.6, 1.9, 3.65], [15.6, 6.70, 1.62, 7.0, 9.4, 1.4, 5.2]],
+  // C (→17.6, sem 10.6→11.7) bajo la cimbra de la losa 2.80: puntales, artesa de TP-a y TP-b, cimbra de T1; sale al jardín por el vano del ventanal
+  [[16.4, 7.30, 1.62, 9.6, 7.56, 1.9, 6.0], [17.0, 5.40, 1.62, 6.6, 4.4, 2.4, 3.65], [17.6, 4.40, 1.62, 4.6, 6.5, 2.2, 3.0]],
+  // D (→20.8, sem 11.7→13.6) sube por fuera (andamio) y camina sobre la cimbra: casetón, malla, arranques de castillos PA; el colado barre del jardín a la calle
+  [[18.4, 6.20, 2.50, 1.6, 8.4, 2.6, 2.0], [19.2, 7.20, 4.25, 0.55, 9.0, 2.6, 4.6], [20.0, 8.30, 4.30, 4.4, 5.0, 2.6, 3.0], [20.8, 7.60, 4.35, 9.6, 5.0, 2.7, 14.0]],
+  // E (→25.6, sem 13.6→17.0) muros PA: desde el borde del vacío ve subir la banda alta de la sala (T1, 4 ventanas con dintel); acercamiento al muro de la recámara 2
+  [[21.8, 6.00, 4.40, 9.4, 4.0, 3.9, 3.65], [22.8, 4.60, 4.40, 9.0, 2.0, 4.0, 5.5], [23.8, 4.40, 4.40, 10.3, 3.2, 3.5, 11.80],
+    [24.6, 5.40, 4.40, 10.4, 4.6, 3.4, 11.80], [25.6, 7.80, 4.40, 10.4, 9.0, 4.2, 13.0]],
+  // F (→28.8, sem 17.0→18.6) cimbra de la 5.60: el bosque de 5.35 m de la sala desde PA, el pie de la escalera y la subida
+  [[26.4, 7.20, 4.40, 9.2, 4.2, 3.0, 6.0], [27.2, 7.80, 4.40, 10.4, 9.0, 4.40, 10.95], [27.6, 7.90, 4.40, 10.95, 11.2, 4.6, 10.95],
+    [28.0, 10.40, 5.10, 10.95, 12.0, 5.3, 10.1], [28.4, 11.85, 5.75, 10.2, 9.6, 5.9, 9.1], [28.8, 9.60, 7.15, 9.1, 6.5, 6.9, 9.7]],
+  // G (→30.4, sem 18.6→19.8) sobre el armado de la 5.60 y su colado (cruza y = 8.14 antes de que suba el muro del volumen)
+  [[29.6, 7.60, 7.20, 8.6, 5.5, 5.4, 13.0], [30.4, 5.00, 7.20, 6.6, 6.0, 5.4, 15.0]],
+  // H (→35.0, sem 19.8→24.2) terraza: muros del volumen, pretiles y subida a 10 m para ver el armado y el colado de la azotea
+  [[31.2, 4.20, 7.20, 9.0, 6.0, 6.4, 12.0], [32.2, 4.30, 7.20, 10.2, 5.67, 6.5, 11.0], [33.0, 3.00, 7.20, 6.0, 6.5, 6.6, 12.0],
+    [34.0, 3.40, 10.0, 7.8, 8.4, 7.9, 12.0], [35.0, 4.40, 10.0, 11.0, 8.6, 8.1, 12.0]],
+  // I (→41.2, sem 24.2→40) aplanado sobre el mismo muro, pérgola, jacuzzi, bajada por fuera, jardín, cocina y entrega
+  [[36.0, 3.20, 7.20, 9.0, 5.67, 6.2, 11.8], [36.8, 5.00, 7.20, 9.6, 9.0, 6.2, 5.0], [37.5, 3.90, 7.20, 8.2, 4.0, 6.2, 3.0], [38.1, 4.50, 7.25, 4.6, 4.5, 2.0, 0.5],
+    [38.7, 4.50, 5.40, 1.8, 4.6, 2.6, 6.0], [39.3, 6.00, 1.70, 1.6, 4.4, 1.5, 6.0], [39.9, 8.50, 1.70, 2.6, 9.6, 1.1, 5.4], [40.3, 8.30, 1.75, 4.15, 9.9, 0.9, 5.4],
+    [40.9, 7.25, 1.70, 4.25, 2.0, 1.5, 7.8], [41.2, 7.20, 1.70, 8.1, 2.2, 1.5, 4.2]],
 ];
 const LEGS = TRAMOS.map((t, i) => ({ keys: i ? [TRAMOS[i - 1][TRAMOS[i - 1].length - 1], ...t] : t }));
 for (const leg of LEGS) {
@@ -132,12 +140,14 @@ function walkAt(v) {
   const u = (i + clamp((vv - k[i][0]) / (k[i + 1][0] - k[i][0]), 0, 1)) / (k.length - 1);
   return { P: leg.pos.getPoint(u), L: leg.look.getPoint(u) };
 }
-const V_END = LEGS[LEGS.length - 1].v1;   // 29.5, la entrega
+const V_END = LEGS[LEGS.length - 1].v1;   // 41.2, la entrega
 // la semana en cada punto del scroll. Al terminar la zambullida la obra va en la 4.1: las cepas siguen abiertas frente a la cámara.
 const W_DIVE = 4.1;
 const WEEK_KEYS = [
-  [6.0, W_DIVE], [6.9, 6.0], [10.4, 10.6], [12.8, 13.4], [15.2, 16.8], [16.2, 18.0], [17.2, 18.6], [18.9, 19.6],
-  [20.5, 21.5], [22.6, 23.6], [24.6, 27.0], [26.0, 31.0], [27.4, 33.5], [28.5, 36.0], [29.0, 38.0], [29.5, 40.0],
+  [6.0, W_DIVE], [7.0, 5.0], [8.8, 6.0], [9.6, 6.4], [10.5, 6.9], [11.4, 7.95], [12.6, 8.6], [13.4, 9.2], [14.4, 9.9], [15.6, 10.6],
+  [16.4, 11.0], [17.6, 11.7], [19.2, 12.4], [20.8, 13.6], [21.8, 14.2], [23.8, 15.5], [24.6, 16.1], [25.6, 17.0], [26.4, 17.6],
+  [27.2, 18.0], [28.8, 18.6], [30.4, 19.8], [31.2, 20.4], [32.2, 21.0], [33.0, 21.9], [34.0, 23.2], [35.0, 24.2], [36.0, 25.2],
+  [36.8, 26.0], [37.5, 27.0], [38.1, 28.6], [38.7, 30.0], [39.3, 32.5], [39.9, 35.0], [40.3, 36.5], [40.9, 38.8], [41.2, 40.0],
 ];
 function weekAt(v) {
   if (v <= WEEK_KEYS[0][0]) return WEEK_KEYS[0][1];
@@ -148,7 +158,8 @@ function weekAt(v) {
   return WEEKS;
 }
 // face: la cámara sale de la casa, sube sobre ella y baja a la calle frente a la fachada; faceHold: se queda ahí; out: sale a la hoja
-const END = { face: [29.5, 31.0], faceHold: [31.0, 31.6], out: [31.6, 33.3], unpour: [33.3, 34.3], zoom: [34.3, 35.4], total: 36.0 };
+const E0 = V_END;
+const END = { face: [E0, E0 + 1.5], faceHold: [E0 + 1.5, E0 + 2.1], out: [E0 + 2.1, E0 + 3.8], unpour: [E0 + 3.8, E0 + 4.8], zoom: [E0 + 4.8, E0 + 5.9], total: E0 + 6.5 };
 const KW = toK(...(() => { const w = walkAt(V_END); return [w.P, w.L, EYE_FOV]; })());
 const KF = toK(PL(4.0, 1.65, 29.6), PL(6.7, 3.5, 19.3), EYE_FOV);   // la fachada principal desde la calle (eje 9)
 // del final del recorrido (dentro de la cocina) la cámara sale por la puerta del jardín por donde entró, sube por detrás de la casa, la
@@ -168,7 +179,7 @@ function faceAt(f) {
 
 // los puntales se dejan pasillo donde pasa la cámara: muestras de su camino cada 0.1 de scroll
 const SAMPLES = [];
-for (let v = DIVE; v <= V_END + 1e-6; v += 0.1) { const w = walkAt(v); SAMPLES.push({ x: w.P.x, y: w.P.y, z: w.P.z }); }
+for (let v = DIVE; v <= V_END + 1e-6; v += 0.1) { const w = walkAt(v); SAMPLES.push({ x: w.P.x, y: w.P.y, z: w.P.z, w: weekAt(v) }); }
 
 const R = makeMaterials(T, ENV);
 const scene = new THREE.Scene();
@@ -224,7 +235,7 @@ let shadowKey = '', faceK = 0;   // faceK: 1 cuando la cámara mira la fachada a
 const SUN_FACE = sunDir(148, 21);
 function lightFor(week) {
   const pm = sm(27, 36, week);
-  const dir = SUN_AM.clone().lerp(SUN_MID, sm(15.4, 17.4, week)).normalize().lerp(SUN_PM, pm).normalize().lerp(SUN_FACE, faceK).normalize();
+  const dir = SUN_AM.clone().lerp(SUN_MID, sm(16.5, 18.5, week)).normalize().lerp(SUN_PM, pm).normalize().lerp(SUN_FACE, faceK).normalize();
   sun.position.copy(sunAt).addScaledVector(dir, 140);
   sun.color.set(0xffe7cc).lerp(C('#ffc68c'), pm); sun.intensity = lerp(3.15, 3.55, pm);
   hemi.intensity = lerp(0.88, 0.72, pm);
@@ -344,28 +355,43 @@ function drawNotes(alpha) {
 
 // lo que dice la letra chica en cada punto
 const rowOf = (w) => { let n = PROG[0][0]; for (const [name, a] of PROG) if (w >= a) n = name; return n; };
+const fmt = (n) => n.toLocaleString('es-MX');
 function chipFor(v, week, pour, diving) {
   const wk = `Semana ${pad(clamp(Math.ceil(week - 1e-3), 1, WEEKS))} &nbsp;//&nbsp; `;
   if (v >= END.zoom[0] + 0.3) return '';
   if (v >= V_END + 0.15 && v < END.out[0]) return 'Semana 40 &nbsp;//&nbsp; <i>Entrega · fachada a la calle</i>';
-  if (v >= END.out[0] + 0.15) return 'Dibujo 06 &nbsp;//&nbsp; Cancelería, acabados y entrega &nbsp;//&nbsp; <i>Sem 24–40</i>';
+  if (v >= END.out[0] + 0.15) return `Dibujo 06 &nbsp;//&nbsp; ${TILES[5].name} &nbsp;//&nbsp; <i>Sem ${pad(TILES[5].w0 + 1)}–40</i>`;
   if (v > DIVE + 0.5) {
     if (week >= 39.8) return 'Semana 40 &nbsp;//&nbsp; <i>Entrega</i>';
     const n = propsAt(week);
-    if (week < 5.25) return wk + '<i>Relleno compactado en capas</i>';
-    if (week < 6.2) return wk + '<i>Firme de planta baja · 10 cm</i>';
-    if (week < 10) return wk + `<i>${rowOf(week)}</i>`;
-    if (week < 13.4) return wk + `<i>Cimbra y colado · losa N.P.T. 2.80${n ? ` · ${n} puntales` : ''}</i>`;
-    if (week < 16.8) return wk + '<i>Muros de planta alta</i>';
-    if (week < 19.6) return wk + `<i>Colado de losa N.P.T. 5.60${n ? ` · ${n} puntales en la sala doble altura` : ''}</i>`;
-    if (week < 21.5) return wk + '<i>Descimbrado</i>';
-    if (week < 23.0) return wk + '<i>Azotea N.P.T. 8.20</i>';
-    if (week < 26.5) return wk + '<i>Cancelería y barandales de vidrio</i>';
-    if (week < 31.0) return wk + '<i>Aplanados y duela de roble</i>';
-    if (week < 33.0) return wk + '<i>Terraza · deck, jacuzzi y pérgola</i>';
-    if (week < 35.0) return wk + '<i>Jardín</i>';
-    if (week < 37.2) return wk + '<i>Cocina · isla y bancos</i>';
-    return wk + '<i>Sala · doble altura</i>';
+    // la planta según la altura del ojo
+    const eye = walkAt(v).P.y, floor = eye < 2.6 ? 'Planta baja' : eye < 5.4 ? 'Planta alta' : 'Terraza';
+    const pre = wk + (PHONE ? '' : floor + ' &nbsp;//&nbsp; ');
+    const B = WORLD.blocksAt ? WORLD.blocksAt(week) : null;   // { pb: [n, N], pa: [n, N], t: [n, N] }
+    const pz = (k, txt) => (B && B[k] && B[k][0] > 0 ? `${txt} · ${fmt(B[k][0])} de ${fmt(B[k][1])} piezas` : txt);
+    let t;
+    if (week < 4.4) t = 'Contratrabes y anclas de castillo';
+    else if (week < 5.25) t = 'Relleno compactado en capas';
+    else if (week < 6.3) t = 'Firme de planta baja · 10 cm';
+    else if (week < 10.6) t = pz('pb', 'Muros de block 15 × 20 × 40 · hilada por hilada');
+    else if (week < 11.2) t = `Cimbra de losa N.P.T. 2.80${n ? ` · ${n} puntales` : ''}`;
+    else if (week < 12.5) t = 'Armado de losa · casetón, nervaduras y malla';
+    else if (week < 13.6) t = 'Colado de losa N.P.T. 2.80';
+    else if (week < 17.2) t = pz('pa', 'Muros de block de planta alta · castillos y dalas');
+    else if (week < 17.9) t = `Cimbra de losa N.P.T. 5.60${n ? ` · ${n} puntales` : ''}`;
+    else if (week < 18.8) t = 'Armado de losa N.P.T. 5.60';
+    else if (week < 19.8) t = 'Colado de losa N.P.T. 5.60';
+    else if (week < 22.6) t = pz('t', 'Muros y pretiles de la terraza');
+    else if (week < 23.8) t = 'Cimbra y armado de azotea N.P.T. 8.20';
+    else if (week < 24.5) t = 'Colado de azotea';
+    else if (week < 28.0) t = 'Aplanados de mortero · cubren el block';
+    else if (week < 31.2) t = 'Cancelería y barandales de vidrio';
+    else if (week < 33.0) t = 'Pisos · duela de roble y travertino';
+    else if (week < 34.6) t = 'Terraza · deck, jacuzzi y pérgola';
+    else if (week < 36.0) t = 'Jardín';
+    else if (week < 37.6) t = 'Cocina · isla y bancos';
+    else t = 'Sala · doble altura';
+    return pre + '<i>' + t + '</i>';
   }
   if (v > DIVE * 0.93) return 'Semana 05 &nbsp;//&nbsp; <i>Colado de contratrabes</i>';
   if (pour > 0) { const w = clamp(Math.ceil(pour), 1, 5); return `Semana ${pad(w)} &nbsp;//&nbsp; <i>${w <= 1 ? 'Trazo y excavación' : w === 2 ? 'Excavación y plantilla' : w === 3 ? 'Armado y colado de zapatas' : 'Cimbra y colado de contratrabes'}</i>`; }
@@ -431,7 +457,7 @@ function frame(now) {
   }
   if (WQ !== null) week = WQ;
   faceK = facing ? sm(0.45, 1, clamp((sv - END.face[0]) / (END.face[1] - END.face[0]), 0, 1)) : ending ? 1 - sm(END.out[0], END.out[0] + 0.7, sv) : 0;
-  U.real.value = week; lightFor(week);
+  U.real.value = week; lightFor(week); scene.userData.week = week;
 
   const s = Math.exp(Math.log(sC) * z);
   const zr = (r) => ({ x: F.x + (r.x - F.x) * s, y: F.y + (r.y - F.y) * s, w: r.w * s, h: r.h * s });
@@ -479,7 +505,7 @@ function frame(now) {
   if (pipe.shafts) {
     // los rayos de sol: solo con la cámara dentro de la casa
     const inHouse = sv > DIVE + 4 && !ending ? 1 - sm(V_END, V_END + 0.4, sv) : 0;
-    const dens = inHouse * (0.018 * sm(16.2, 17.2, week) * (1 - sm(22.5, 23.5, week)) + 0.006 * sm(37, 39, week));
+    const dens = inHouse * (0.018 * sm(17.6, 18.4, week) * (1 - sm(23.0, 24.0, week)) + 0.006 * sm(37, 39, week));
     pipe.shafts.enabled = realOn && dens > 1e-4;
     if (pipe.shafts.enabled) {
       const u = pipe.shafts.uniforms;

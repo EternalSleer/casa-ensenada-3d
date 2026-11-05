@@ -5,7 +5,8 @@
 // Las partes de la casa salen de casa.js (el bloque de arquitectura copiado de index.html); aquí solo se les pone semana.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { casaParts, CX, CZ, cimRuns, Fhat, runW, rectOf, ovl, subtractIv } from './casa.js';
+import { casaParts, CX, CZ, cimRuns, Fhat, runW, rectOf, ovl, subtractIv, WALLS, TRABES, COLS, LV } from './casa.js';
+import { planObra } from './block.js';
 
 export const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -14,7 +15,7 @@ const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t
 // ---------------------------------------------------------------- el programa
 export const { WEEKS, PROG, TILES } = window.SEQ;
 // fases de las 6 láminas (coherentes con TILES de programme.js)
-export const PHASE = { 1: [0, 5], 2: [5, 10], 3: [10, 13], 4: [13, 16], 5: [16, 23], 6: [23, 40] };
+export const PHASE = Object.fromEntries(TILES.map((t, i) => [i + 1, [t.w0, t.w1]]));
 
 // ---------------------------------------------------------------- random, noise
 let seed = 11;
@@ -257,6 +258,36 @@ export async function makeTextures(renderer, phone, step) {
     g.strokeRect(12, 12, s - 24, s - 24);
     g.beginPath(); g.moveTo(0, s * 0.5); g.lineTo(s, s * 0.5); g. moveTo(s * 0.5, 0); g.lineTo(s * 0.5, s); g.stroke();
   });
+  // block de concreto común gris 15 × 20 × 40: la mitad izquierda es la cara (junta de mortero a la izquierda y abajo), la derecha la cara superior con sus dos celdas huecas
+  const cmu = (bump) => {
+    const c = document.createElement('canvas'); c.width = 512; c.height = 256;
+    const g = c.getContext('2d', { willReadFrequently: true });
+    const a = fbm(256, 4, 4), b = fbm(256, 40, 2);
+    const img = g.createImageData(512, 256), d = img.data;
+    for (let y = 0; y < 256; y++) for (let x = 0; x < 512; x++) {
+      const i = y * 512 + x, j = y * 256 + (x & 255), v = clamp(0.5 + (a[j] - 0.5) * 0.9 + (b[j] - 0.5) * 0.7, 0, 1), k = (rnd() - 0.5) * (bump ? 26 : 16);
+      const base = bump ? 140 + (v - 0.5) * 36 : 138 + v * 26;
+      d[i * 4] = base + k; d[i * 4 + 1] = base + k - (bump ? 0 : 1.5); d[i * 4 + 2] = base + k - (bump ? 0 : 5); d[i * 4 + 3] = 255;
+    }
+    g.putImageData(img, 0, 0);
+    // poros
+    for (let i = 0; i < 260; i++) { g.fillStyle = bump ? `rgba(40,40,40,${0.3 + rnd() * 0.4})` : `rgba(70,68,64,${0.18 + rnd() * 0.3})`; g.beginPath(); g.arc(rnd() * 512, rnd() * 256, 0.6 + rnd() * 1.6, 0, 7); g.fill(); }
+    const mort = bump ? '#3c3c3c' : '#767269', rim = bump ? '#222' : '#5a564f', hi = bump ? '#9a9a9a' : '#a8a499';
+    // cara: junta izquierda y abajo
+    g.fillStyle = mort; g.fillRect(0, 0, 6, 256); g.fillRect(0, 250, 256, 6);
+    g.fillStyle = rim; g.fillRect(6, 0, 2, 250); g.fillRect(6, 248, 250, 2);
+    g.fillStyle = hi; g.fillRect(0, 0, 256, 2);
+    // cara superior: anillo de mortero y dos celdas huecas
+    g.fillStyle = mort; g.fillRect(256, 0, 256, 6); g.fillRect(256, 250, 256, 6); g.fillRect(256, 0, 6, 256); g.fillRect(506, 0, 6, 256);
+    g.fillStyle = bump ? '#101010' : '#2a2a2a';
+    for (const cx of [334, 434]) { g.beginPath(); g.roundRect(cx - 32, 62, 64, 132, 10); g.fill(); }
+    g.fillStyle = bump ? '#282828' : '#4a4843';
+    for (const cx of [334, 434]) { g.beginPath(); g.roundRect(cx - 32, 62, 64, 14, 6); g.fill(); }
+    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = MAX_ANISO; t.colorSpace = bump ? THREE.NoColorSpace : THREE.SRGBColorSpace;
+    return t;
+  };
+  // el block usa el generador global: se guarda y se restaura la semilla para que lo que viene después (árboles, pasto) salga igual que sin él
+  { const sd = seed; T.cmu = cmu(false); T.cmuBump = cmu(true); seed = sd; }
   // Fine high-density safety debris mesh (no giant LEGO holes)
   T.net = (() => {
     const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d');
@@ -430,6 +461,8 @@ export function makeMaterials(T, env) {
     cabGlass: new THREE.MeshBasicMaterial({ color: 0x8cb0bd, envMap: env, combine: THREE.MixOperation, reflectivity: 0.45, transparent: true, opacity: 0.34, depthWrite: false }),
     beacon: std({ color: 0xff6d00, emissive: 0xf0500f, emissiveIntensity: 0.6, roughness: 0.2 }),
     rebar: std({ color: 0x563826, roughness: 0.7, metalness: 0.38 }),
+    cmu: std({ map: T.cmu, bumpMap: T.cmuBump, bumpScale: 0.02, roughness: 0.95, envMapIntensity: 0.2, vertexColors: true }),
+    eps: std({ color: 0xf1efe9, roughness: 0.96 }),
     cap: std({ color: 0xf0500f, roughness: 0.45 }),
     timber: std({ map: T.oak, color: 0xc8a276, roughness: 0.85 }),
     galv: std({ color: 0xc4c6c4, metalness: 0.62, roughness: 0.42, envMapIntensity: 0.45 }),
@@ -490,53 +523,58 @@ export function addMesh(group, geo, sets, o = {}) {
 const sOf = (z) => clamp((z + CZ) / 20.69, 0, 1);
 const aff = (a, b, c = 0, y0 = 0, hy = 1) => (x, y, z) => a + b * sOf(z) + c * clamp((y - y0) / hy, 0, 1);
 
+// cada muro con block trae su semana de banda (block.js); sin banda, lo de siempre con las semanas nuevas
+let OBRA = null;
 function partWeeks(p) {
   if (p.wk) return p.wk;   // zapatas y contratrabes traen su semana (tramos a lo largo del eje, casa.js)
   switch (p.k) {
     case 'firme': return (x, y, z) => 4.6 + 1.6 * Fhat(x, z);
-    case 'slab': return p.lvl === 1 ? aff(11.2, 1.4) : p.lvl === 2 ? aff(17.0, 1.2) : aff(21.6, 0.9);
-    case 'stair': return p.st === 2 ? aff(16.6, 0, 0.5, 2.8, 2.8) : aff(13.4, 0, 0.5, 0, 2.8);
-    case 'barda': return aff(8.4, 1.4, 0.2, 0, 2.4);
-    case 'struct':
-      if (p.lvl === 0) return aff(6.2, 3.2, 0.5, 0, 2.55);
-      if (p.lvl === 1) return aff(13.2, 2.6, 0.4, 2.55, 2.8);
-      return p.b[4] <= 6.85 ? aff(20.6, 0.8, 0.1, 5.6, 1.2) : aff(19.0, 2.0, 0.3, 5.6, 2.35);   // pretiles / muros de la terraza
-    case 'columna': return aff(20.6, 0.8);
+    case 'slab': return p.lvl === 1 ? aff(12.6, 1.0) : p.lvl === 2 ? aff(18.8, 1.0) : aff(23.8, 0.6);
+    case 'stair': return p.st === 2 ? aff(17.3, 0, 0.3, 2.8, 2.8) : aff(13.8, 0, 0.5, 0, 2.8);
+    case 'trabe': return aff(12.6, 1.0);   // T2: se cuela con la losa 2.80
+    case 'barda': case 'struct':
+      if (p.wid !== undefined && OBRA) return OBRA.bandWeek(p.wid, p.b);
+      if (p.k === 'barda') return aff(6.8, 2.6, 0.2, 0, 2.4);
+      if (p.lvl === 0) return aff(6.2, 3.0, 0.5, 0, 2.55);
+      if (p.lvl === 1) return aff(13.2, 3.0, 0.4, 2.55, 2.8);
+      return p.b[4] <= 6.85 ? aff(21.6, 0.8, 0.1, 5.6, 1.2) : aff(19.6, 1.6, 0.3, 5.6, 2.35);   // pretiles / muros de la terraza
+    case 'columna': return aff(24.0, 0.6);
     case 'frame': case 'glass':
-      if (p.lvl === 0) return aff(23.0, 1.6);
-      if (p.lvl === 1) return aff(24.2, 1.4);
-      return p.b[4] <= 6.75 ? aff(25.8, 0.6) : aff(25.2, 1.2);   // barandal de vidrio / cancelería de la terraza
-    case 'pergola': return aff(25.5, 1.0);
-    case 'dframe': return aff(27.0, 1.0);
+      if (p.lvl === 0) return aff(28.6, 1.2);
+      if (p.lvl === 1) return aff(29.4, 1.0);
+      return p.b[4] <= 6.75 ? aff(30.6, 0.5) : aff(30.2, 0.8);   // barandal de vidrio / cancelería de la terraza
+    case 'pergola': return aff(27.0, 1.0);
+    case 'dframe': return aff(32.0, 0.8);
     case 'fachada': {
       const t = p.b[1] >= 5;
       switch (p.m) {
-        case 'plaster': return t ? aff(17.4, 0.8) : aff(16.2, 0.6);
-        case 'grayPanel': return p.b[1] >= 5.5 ? aff(22.6, 0.4) : aff(16.8, 0.6);
-        case 'fluted': return aff(26.0, 0.8);
-        case 'woodSoffit': return aff(25.6, 0.8);
-        case 'walnut': return aff(26.4, 0.6);
-        case 'travertine': return aff(27.0, 0.6);
-        case 'steel': return aff(25.0, 0.8);
-        case 'led': return aff(27.4, 0.4);
+        case 'plaster': return t ? aff(24.8, 0.6) : aff(26.2, 0.6);
+        case 'grayPanel': return p.b[1] >= 5.5 ? aff(25.8, 0.4) : aff(27.0, 0.6);
+        case 'fluted': return aff(29.0, 0.8);
+        case 'woodSoffit': return aff(29.4, 0.8);
+        case 'walnut': return aff(32.0, 0.6);
+        case 'travertine': return aff(31.4, 0.6);
+        case 'steel': return aff(29.6, 0.8);
+        case 'led': return aff(32.4, 0.4);
         case 'conc': return aff(28.6, 0.4);
-        case 'grass': return aff(33.0, 2.0);
+        case 'grass': return aff(34.5, 1.5);
       }
-      return aff(28.0, 0.8);
+      return aff(30.0, 0.8);
     }
-    case 'gate': { const w = p.g === 'cochera' ? 28.5 : 28.8; return () => w; }
+    case 'gate': { const w = p.g === 'cochera' ? 32.5 : 32.6; return () => w; }
   }
   const [a, b] = PHASE[Math.min(6, p.lvl + 2)] || [0, 40];
   return () => a + (b - a) * 0.5;
 }
-// acabados: capa de 2.5 mm sobre la estructura; el bruto desaparece cuando llega el acabado
+// acabados: capa de 2.5 mm sobre la estructura; el bruto desaparece cuando llega el acabado.
+// Los aplanados cubren el block: de la terraza hacia abajo (finPl(lvl) = nivel del muro)
+const finPl = (lvl) => (lvl <= 0 ? aff(26.0, 1.6) : lvl === 1 ? aff(25.2, 1.6) : aff(24.6, 1.0));
 const FIN = {
-  plaster: aff(26.5, 3.0),
-  oak: (x, y, z) => (y < 2.5 ? 29.5 + 1.5 * sOf(z) : 30.5 + 1.3 * sOf(z)),
-  travertine: aff(31.0, 1.5),
+  oak: (x, y, z) => (y < 2.5 ? 30.0 + 1.2 * sOf(z) : 30.8 + 1.0 * sOf(z)),
+  travertine: aff(31.0, 1.0),
   conc: aff(28.6, 0.4),
-  grass: aff(33.0, 2.0),
-  water: () => 33,
+  grass: aff(34.5, 1.5),
+  water: () => 33.6,
 };
 
 const FACES = [
@@ -565,9 +603,16 @@ function boxGeos(boxes, mode) {
   };
   for (const p of boxes) for (const f of FACES) {
     if (mode === 'paper') emit('paper', p, f, p.weeks, () => 0);
-    else if (p.m === 'plaster') {
-      emit('block', p, f, p.weeks, (x, y, z) => FIN.plaster(x, y, z) + 0.02);
-      emit('plaster', p, f, FIN.plaster, () => 0, 0.0025);
+    else if (p.wid !== undefined) {   // muro de block: el bruto lo levanta block.js hilada por hilada; aquí solo la capa de acabado
+      if (p.m === 'plaster') emit('plaster', p, f, finPl(p.lvl), () => 0, 0.0025);
+      else if (p.m === 'walnut') emit('walnut', p, f, (x, y, z) => 32.0 + 0.6 * sOf(z), () => 0, 0.0025);
+      // m 'block' (barda aparente de lindero): nada, la dibuja block.js sin aplanado
+    } else if (p.k === 'trabe') {   // T2: faldón de la cochera, concreto con aplanado encima
+      emit('conc', p, f, p.weeks, (x, y, z) => finPl(p.lvl)(x, y, z) + 0.02);
+      emit('plaster', p, f, finPl(p.lvl), () => 0, 0.0025);
+    } else if (p.m === 'plaster') {
+      emit('block', p, f, p.weeks, (x, y, z) => finPl(p.lvl)(x, y, z) + 0.02);
+      emit('plaster', p, f, finPl(p.lvl), () => 0, 0.0025);
     } else emit(p.m, p, f, p.weeks, () => 0);
   }
   const out = {};
@@ -600,25 +645,43 @@ function offsetGeo(g, d) {
   return o;
 }
 const FLOOR_MAT = { conc: 'concPol' };
-const NOSHADOW = new Set(['glass', 'steel', 'plaster', 'oak', 'travertine', 'grass', 'concPol', 'water', 'white', 'led']);
-const DRAWN_NF = new Set(['struct', 'barda', 'stair', 'columna', 'zapata', 'contra']);   // línea de peso completo
+const NOSHADOW = new Set(['glass', 'steel', 'plaster', 'oak', 'travertine', 'grass', 'concPol', 'water', 'white', 'led', 'rebar', 'eps', 'cap']);
+const DRAWN_NF = new Set(['struct', 'barda', 'trabe', 'stair', 'columna', 'zapata', 'contra']);   // línea de peso completo
 const DRAWN_FR = new Set(['frame', 'dframe', 'pergola', 'fachada']);                                  // cancelería: línea fina
 
+// acumulador crudo de block.js -> geometría (cmu lleva color por pieza; el resto: position, normal, uv, aWeek, aOut)
+function accGeo(A) {
+  if (!A.pos.length) return null;
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(A.pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(A.nor, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(A.uv, 2)); g.setAttribute('aWeek', new THREE.Float32BufferAttribute(A.wk, 1));
+  g.setAttribute('aOut', new THREE.Float32BufferAttribute(A.out, 1));
+  if (A.col) g.setAttribute('color', new THREE.Float32BufferAttribute(A.col, 3));
+  return g;
+}
+export function blocksAt(week) { return OBRA ? OBRA.blocksAt(week) : { pb: [0, 0], pa: [0, 0], t: [0, 0] }; }
+export function castAt(week) { return OBRA ? OBRA.castAt(week) : [0, 0]; }
+export const obraStats = () => (OBRA ? OBRA.final || OBRA.stats() : null);
+
 // pone la casa en `group`; devuelve lo que necesitan los puntales y el terreno
-function buildHouse(group, R) {
+async function buildHouse(group, R, samples, tick, phone) {
+  const tObra = performance.now();
   const all = casaParts();
   const boxes = all.filter((p) => p.t === 'box'), slabs = all.filter((p) => p.t === 'slab'), floors = all.filter((p) => p.t === 'floor');
-  for (const p of [...boxes, ...slabs]) p.weeks = partWeeks(p);
+  for (const p of slabs) p.weeks = partWeeks(p);
+  OBRA = planObra({ walls: WALLS, trabes: TRABES, cols: COLS, slabs, Fhat, finPl, sOf, LV, phone, samples });
+  for (const p of boxes) p.weeks = partWeeks(p);
   const real = {}, add = (k, g) => (real[k] || (real[k] = [])).push(g);
+  const own = [];
   const rb = boxGeos(boxes, 'real');
   for (const k in rb) add(k, rb[k]);
   const paperSlabs = [];
   for (const s of slabs) {
     const g = slabGeo(s);
     paperSlabs.push(stamp(slabGeo(s), s.weeks, 0));
-    if (s.m === 'plaster') {
-      const lay = offsetGeo(g, 0.0025);
-      stamp(g, s.weeks, (x, y, z) => FIN.plaster(x, y, z) + 0.02); stamp(lay, FIN.plaster, 0);
+    if (s.m === 'plaster') {   // el plafón se aplana con el nivel de abajo
+      const fp = finPl(s.lvl - 1), lay = offsetGeo(g, 0.0025);
+      stamp(g, s.weeks, (x, y, z) => fp(x, y, z) + 0.02); stamp(lay, fp, 0);
       add('conc', g); add('plaster', lay);
     } else { stamp(g, s.weeks, 0); add('conc', g); }
   }
@@ -627,28 +690,45 @@ function buildHouse(group, R) {
     const y = f.y + (f.m === 'grass' ? 0.004 : 0);
     add(FLOOR_MAT[f.m] || f.m, stamp(floorGeo(f, y), FIN[f.m], 0));
   }
+  // obra gruesa pieza por pieza, por nivel
+  for (let l = 0; l < 3; l++) { OBRA.emitLevel(l); if (tick) await tick(0.05 + 0.05 * l); }
+  OBRA.emitSlabs();
+  OBRA.final = OBRA.stats();
+  // la obra gruesa va en mallas propias que se ocultan cuando todo ya salió (hideFrom)
+  for (const k of ['cmu', 'cmuA', 'conc', 'rebar', 'timber', 'ply', 'eps', 'cap']) {
+    const A = OBRA.acc[k], g = accGeo(A); OBRA.acc[k] = null;
+    if (!g) continue;
+    let mx = 0; for (let i = 0; i < A.out.length; i++) { if (!(A.out[i] > 0)) { mx = Infinity; break; } if (A.out[i] > mx) mx = A.out[i]; }
+    own.push({ k: k === 'cmuA' ? 'cmu' : k, g, hideFrom: Number.isFinite(mx) ? mx + 0.01 : undefined });
+  }
   for (const k in real) {
     if (!R[k]) throw new Error('world.js: falta el material R.' + k);
     addMesh(group, merge(real[k]), { main: R[k], paper: null, nd: null }, { glass: k === 'glass', shadow: !NOSHADOW.has(k) });
   }
+  for (const { k, g, hideFrom } of own) {
+    const m = addMesh(group, g, { main: R[k], paper: null, nd: null }, { shadow: !NOSHADOW.has(k) });
+    if (hideFrom !== undefined) m.userData.hideFrom = hideFrom;
+  }
+  window.__obraMs = Math.round(performance.now() - tObra);
   // el dibujo, separado por jerarquía de línea
   const dn = boxGeos(boxes.filter((p) => DRAWN_NF.has(p.k)), 'paper');
   addMesh(group, merge([dn.paper, ...paperSlabs]), { main: null, paper: DM.paper, nd: DM.nd });
   const df = boxGeos(boxes.filter((p) => DRAWN_FR.has(p.k)), 'paper');
   if (df.paper) addMesh(group, df.paper, { main: null, paper: DM.paper, nd: DM.ndFrame });
-  return { boxes, slabs };
+  return { boxes, slabs, obra: OBRA };
 }
 
 // ---------------------------------------------------------------- obra falsa: puntales telescópicos y cimbra de triplay
 // Cada entrada [x0, x1, y0, y1, yb, yt, [semana de llegada], semana de salida]: x e y son del plano (como en index.html),
 // yb..yt la altura que apuntalan. La losa de arriba y el apoyo de abajo dan la forma del triplay y dónde puede haber poste.
 export const PROPS = [
-  [7.2, 12.3, 14.1, 19.7, 0, 2.55, [10.0, 10.8], 18.6],       // cochera, bajo la losa 2.80
-  [1.6, 9.0, 8.4, 18.0, 0, 2.55, [10.1, 10.9], 18.8],         // planta baja norte
-  [7.7, 12.3, 2.7, 7.0, 0, 2.55, [10.0, 10.6], 18.4],         // cocina
-  [1.6, 7.25, 3.85, 8.1, 0, 5.35, [16.0, 16.6], 22.8],        // sala de doble altura: el bosque de 5.35 m
-  [1.6, 12.3, 0.2, 19.7, 2.80, 5.35, [16.0, 16.6], 23.0],     // planta alta, bajo la losa 5.60
-  [5.8, 12.3, 8.3, 16.3, 5.60, 7.95, [21.0, 21.4], 25.6],     // volumen de la terraza, bajo la azotea
+  [7.2, 12.3, 14.1, 19.7, 0, 2.55, [10.4, 11.0], 19.2],       // cochera, bajo la losa 2.80
+  [1.6, 9.0, 8.4, 18.0, 0, 2.55, [10.5, 11.0], 19.3],         // planta baja norte
+  [7.7, 12.3, 2.7, 7.0, 0, 2.55, [10.4, 10.9], 19.1],         // cocina
+  [1.6, 7.25, 3.85, 8.1, 0, 5.35, [17.2, 17.8], 23.4],        // sala de doble altura: el bosque de 5.35 m
+  [1.6, 12.3, 0.2, 19.7, 2.80, 5.35, [17.2, 17.8], 23.6],     // planta alta, bajo la losa 5.60
+  [5.8, 12.3, 8.3, 16.3, 5.60, 7.95, [22.6, 23.0], 27.0],     // volumen de la terraza, bajo la azotea
+  [7.6, 12.3, 0.15, 2.6, 0, 2.55, [10.4, 11.0], 19.2],        // pórtico y lavado, bajo la losa 2.80
 ];
 const POSTS = [];   // { w, o } de cada poste creado: de aquí sale el conteo del chip
 export function propsAt(week) {
@@ -666,13 +746,49 @@ const inPoly = (x, z, poly) => {
 };
 const onSlab = (s, x, z) => inPoly(x, z, s.outer) && !s.holes.some((h) => inPoly(x, z, h));
 
+// andamio tubular de dos cuerpos con plataforma a 2.62, junto al borde de la losa 2.80 (jardín): por ahí sube el ojo en el recorrido. Coordenadas del plano.
+const SCAF = { x0: 6.85, x1: 7.55, y0: -1.2, y1: 0.6, top: 2.62, wIn: 10.4, out: 19.3 };
+function scaffoldGeo() {
+  const { x0, x1, y0, y1, top } = SCAF, tubes = [], boards = [];
+  const X0 = x0 - CX, X1 = x1 - CX, Z0 = y0 - CZ, Z1 = y1 - CZ, hr = top + 1.0, r = 0.024;
+  const tube = (ax, a0, a1, p, q, rad = r) => {   // cilindro de eje ax (0 x, 1 y, 2 z) de a0 a a1; (p, q) = las otras dos coordenadas
+    const g = new THREE.CylinderGeometry(rad, rad, a1 - a0, 6, 1, true);
+    if (ax === 0) { g.rotateZ(Math.PI / 2); g.translate((a0 + a1) / 2, p, q); } else if (ax === 1) g.translate(p, (a0 + a1) / 2, q); else { g.rotateX(Math.PI / 2); g.translate(p, q, (a0 + a1) / 2); }
+    tubes.push(g);
+  };
+  const brace = (xa, ya, za, xb, yb, zb) => {
+    const d = new THREE.Vector3(xb - xa, yb - ya, zb - za), g = new THREE.CylinderGeometry(0.017, 0.017, d.length(), 5, 1, true);
+    g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.clone().normalize())); g.translate((xa + xb) / 2, (ya + yb) / 2, (za + zb) / 2); tubes.push(g);
+  };
+  for (const x of [X0, X1]) for (const z of [Z0, Z1]) {
+    tube(1, 0.0, hr, x, z);
+    const bp = new THREE.BoxGeometry(0.14, 0.012, 0.14); bp.translate(x, 0.006, z); tubes.push(bp);
+  }
+  for (const y of [0.35, top / 2, top - 0.04]) {   // largueros y travesaños de cada cuerpo
+    for (const z of [Z0, Z1]) tube(0, X0, X1, y, z);
+    for (const x of [X0, X1]) tube(2, Z0, Z1, x, y);
+  }
+  brace(X0, 0.35, Z0, X0, top / 2, Z1); brace(X0, top / 2, Z1, X0, top - 0.04, Z0);   // diagonales en las caras largas
+  brace(X1, 0.35, Z1, X1, top / 2, Z0); brace(X1, top / 2, Z0, X1, top - 0.04, Z1);
+  brace(X0, 0.35, Z0, X1, top / 2, Z0); brace(X1, top / 2, Z0, X0, top - 0.04, Z0);
+  for (const y of [top + 0.5, hr]) { tube(0, X0, X1, y, Z0); tube(2, Z0, Z1, X1, y); }   // barandal en la cara de la losa y al fondo; abierto del lado de la subida
+  // tablones de 4 cm
+  const n = 3, wd = (X1 - X0) / n;
+  for (let i = 0; i < n; i++) { const b = new THREE.BoxGeometry(wd - 0.012, 0.04, Z1 - Z0 + 0.1); b.translate(X0 + wd * (i + 0.5), top - 0.02, (Z0 + Z1) / 2); boards.push(b); }
+  const t1 = new THREE.BoxGeometry(X1 - X0, 0.15, 0.025); t1.translate((X0 + X1) / 2, top + 0.095, Z0); boards.push(t1);
+  const t2 = new THREE.BoxGeometry(0.025, 0.15, Z1 - Z0); t2.translate(X1, top + 0.095, (Z0 + Z1) / 2); boards.push(t2);
+  const wk = (x, y) => SCAF.wIn + 0.5 * clamp(y / top, 0, 1);
+  return { tubes: stamp(worldUV(merge(tubes)), (x, y) => wk(x, y), SCAF.out), boards: stamp(worldUV(merge(boards)), (x, y) => wk(x, y) + 0.2, SCAF.out) };
+}
+
 function propsGeo(E, ctx) {
   const [px0, px1, py0, py1, yb, yt, wIn, out] = E;
   const x0 = px0 - CX, x1 = px1 - CX, z0 = py0 - CZ, z1 = py1 - CZ;
   const top = ctx.slabs.find((s) => Math.abs(s.y - yt) < 0.03);                       // la losa que se cuela encima
   const sup = yb > 0.01 ? ctx.slabs.find((s) => Math.abs(s.y + s.d - yb) < 0.03) : null;   // la losa donde se apoyan
-  const obst = ctx.boxes.filter((b) => !['glass', 'gate', 'zapata', 'contra'].includes(b.k) && b.b[1] < yt - 0.02 && b.b[4] > yb + 0.02);
-  const cams = ctx.samples.filter((c) => c.y > yb && c.y < yt);
+  const obst = [...ctx.boxes, ...(ctx.obra ? ctx.obra.solids() : [])].filter((b) => !['glass', 'gate', 'zapata', 'contra'].includes(b.k) && b.b[1] < yt - 0.02 && b.b[4] > yb + 0.02);
+  // el recorrido largo pasa por los mismos lugares en otras semanas: solo cuentan las muestras de cuando esto está armado
+  const cams = ctx.samples.filter((c) => c.y > yb && c.y < yt && (c.w === undefined || (c.w > wIn[0] - 0.5 && c.w < out + 1)));
   const free = (x, z) => {
     if (top && !onSlab(top, x, z)) return false;
     if (sup && !onSlab(sup, x, z)) return false;
@@ -709,17 +825,21 @@ function propsGeo(E, ctx) {
   if (top) {
     const xs = new Set([x0, x1]), zs = new Set([z0, z1]);
     for (const poly of [top.outer, ...top.holes]) for (const [px, pz] of poly) { if (px > x0 && px < x1) xs.add(px); if (pz > z0 && pz < z1) zs.add(pz); }
+    // las trabes peraltadas (T1, T2) llevan su propia cimbra de fondo y costados: el triplay se corta en su huella y se ve la artesa con la jaula
+    const cut = (ctx.obra ? ctx.obra.solids() : []).filter((s) => s.k === 'trabe' && s.b[1] <= yt + 0.02 && s.b[4] >= yt - 0.02 && s.b[0] < x1 && s.b[3] > x0 && s.b[2] < z1 && s.b[5] > z0);
+    for (const s of cut) { for (const px of [s.b[0], s.b[3]]) if (px > x0 && px < x1) xs.add(px); for (const pz of [s.b[2], s.b[5]]) if (pz > z0 && pz < z1) zs.add(pz); }
+    const inCut = (x, z) => cut.some((s) => x > s.b[0] && x < s.b[3] && z > s.b[2] && z < s.b[5]);
     const X = [...xs].sort((a, b) => a - b), Z = [...zs].sort((a, b) => a - b);
     for (let j = 0; j < Z.length - 1; j++) {
       let a = null;
       for (let i = 0; i < X.length - 1; i++) {
-        const ok = onSlab(top, (X[i] + X[i + 1]) / 2, (Z[j] + Z[j + 1]) / 2);
+        const ok = onSlab(top, (X[i] + X[i + 1]) / 2, (Z[j] + Z[j + 1]) / 2) && !inCut((X[i] + X[i + 1]) / 2, (Z[j] + Z[j + 1]) / 2);
         if (ok) { if (!a) a = X[i]; } else if (a !== null) { ply.push([a, X[i], Z[j], Z[j + 1]]); a = null; }
       }
       if (a !== null) ply.push([a, X[X.length - 1], Z[j], Z[j + 1]]);
     }
   }
-  const dk = ply.map(([a, b, c, d]) => { const g = new THREE.BoxGeometry(b - a, 0.02, d - c); g.translate((a + b) / 2, yt - 0.01, (c + d) / 2); return worldUV(g); });
+  const dk = ply.map(([a, b, c, d]) => { const g = new THREE.BoxGeometry(b - a, 0.02, d - c); g.translate((a + b) / 2, yt - 0.008, (c + d) / 2); return worldUV(g); });
   const posts = list.length ? stamp(worldUV(merge(list)), wk, outw) : null;
   const deck = dk.length ? stamp(merge(dk), wk, outw) : null;
   return { posts, deck };
@@ -985,7 +1105,7 @@ export function canopy(clusters, s0, s1) {
 // ---------------------------------------------------------------- la cimentación por dentro: trazo, niveletas, plantilla, acero, cimbra
 // Todo es solo de la obra real (el dibujo muestra la cepa, la zapata y la contratrabe). Una geometría por material.
 // Regla: ninguna cara queda en el mismo plano que la de otra pieza (se meten 5–10 mm o se separan ≥ 2 cm).
-function foundationKit(group, R, samples) {
+function foundationKit(group, R, samples, obra) {
   const runs = cimRuns().filter((r) => !r.dropped);
   const huellas = casaParts().filter((p) => p.k === 'firme').map((p) => p.outer);
   const newAcc = () => ({ pos: [], nor: [], wk: [], out: [] });
@@ -1070,9 +1190,12 @@ function foundationKit(group, R, samples) {
     let W = 9;
     for (const r of runs) { const c = r.cepa; if (ax >= c[0] && ax <= c[2] && az >= c[1] && az <= c[3]) W = Math.min(W, runW(r, ax, az)); }
     if (W > 8) continue;
-    const out = 6.5 + 3.2 * clamp((az + CZ) / 20.69, 0, 1);
+    let out = 6.5 + 3.2 * clamp((az + CZ) / 20.69, 0, 1), outRod = out;
+    // con castillo o columna a menos de 0.25: la varilla sigue en el armex y el capuchón sale cuando llega el armex
+    const cp = (obra ? obra.castPoints(0) : []).filter((c) => Math.hypot(c.x - ax, c.z - az) < 0.25).sort((p, q) => Math.hypot(p.x - ax, p.z - az) - Math.hypot(q.x - ax, q.z - az))[0];
+    if (cp) { outRod = 0; out = cp.Wr; }
     for (const dx of [-0.05, 0.05]) for (const dz of [-0.05, 0.05]) {
-      cyl(K.rebar, [ax + dx, -0.95, az + dz], [ax + dx, 0.60, az + dz], 0.008, 1.65 + W, out);
+      cyl(K.rebar, [ax + dx, -0.95, az + dz], [ax + dx, 0.60, az + dz], 0.008, 1.65 + W, outRod);
       frustum(K.cap, [ax + dx, 0.60, az + dz], [ax + dx, 0.645, az + dz], 0.024, 0.018, 1.65 + W, out, 8, true);
     }
   }
@@ -1179,9 +1302,9 @@ export async function buildWorld(o, step) {
   const realOnly = (main) => ({ main, paper: null, nd: null });
 
   // la casa: una geometría por material para la obra, líneas jerárquicas para el dibujo
-  const ctx = buildHouse(group, R);
+  const ctx = await buildHouse(group, R, o.samples || [], tick, phone);
   ctx.samples = o.samples || [];
-  foundationKit(group, R, ctx.samples);
+  foundationKit(group, R, ctx.samples, ctx.obra);
   await tick(0.2);
 
   // obra falsa: puntales y cimbra
@@ -1190,6 +1313,8 @@ export async function buildWorld(o, step) {
     if (g.posts) addMesh(group, g.posts, { main: R.prop, paper: DM.paper, nd: DM.ndProp });
     if (g.deck) addMesh(group, g.deck, { main: R.ply, paper: DM.paper, nd: DM.ndProp });
   }
+
+  { const sc = scaffoldGeo(); addMesh(group, sc.tubes, { main: R.galv, paper: null, nd: null }); addMesh(group, sc.boards, { main: R.timber, paper: null, nd: null }); }
 
   await tick(0.4);
   // el terreno plano, con cepas
@@ -1230,7 +1355,7 @@ export async function buildWorld(o, step) {
     ['olive', 34, 13, 0], ['olive', -12, 19, 0], ['olive', 40, 2, 0], ['round', -22, -12, 0],
     ['olive', 46, -24, 0], ['olive', 52, 10, 0],
     // dos olivos en el jardín (plano (1.3, 1.2) y (0.75, 13.5)), fuera del recorrido de la cámara; aparecen con el pasto
-    ['olive', 1.3 - CX, 0.9 - CZ, 33.4], ['olive', 0.4 - CX, 13.5 - CZ, 33.8, 0.4],
+    ['olive', 1.3 - CX, 0.9 - CZ, 34.6], ['olive', 0.4 - CX, 13.5 - CZ, 35.0, 0.4],
   ]) trees.push(t);
   const leafK = phone ? 0.55 : 1;
   let ti = 0;
@@ -1461,7 +1586,7 @@ function fence(R) {
   edge(-9.5, zf, 9.5, zf, (x) => Math.abs(x - gx) < 2.9);
   const out = [];
   for (const [list, m] of [[frame, R.galv], [wire, R.wire], [feet, R.block]]) {
-    const g = merge(list); stamp(g, 0.2, 28.6);
+    const g = merge(list); stamp(g, 0.2, 33.0);
     const mesh = new THREE.Mesh(g, m); mesh.userData.sets = { main: m, paper: null, nd: null }; mesh.castShadow = true; mesh.receiveShadow = true; mesh.customDepthMaterial = DEPTH_WEEKLY; out.push(mesh);
   }
   return out;

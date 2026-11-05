@@ -26,8 +26,9 @@ const mat = new Proxy(MAT, { get: (t, k) => { if (!(k in t)) throw new Error('ca
 const M = () => 'stairSteel';                                 // el acero de los peldaños (k 'stair')
 
 const parts = [];
+export const WALLS = [];                                      // registro de muros para block.js (obra gruesa): ver wall()
 export const footWalls = [];                                  // muros de planta baja con cimiento: { a:[x,z], b:[x,z], t }
-const LV = [2.55, 5.35];                                      // alturas absolutas donde se corta cada caja (ninguna cruza niveles)
+export const LV = [2.55, 5.35];                                    // alturas absolutas donde se corta cada caja (ninguna cruza niveles)
 const lvlOfY = (y) => (y < LV[0] ? 0 : y < LV[1] ? 1 : 2);
 
 const rect = (x0, y0, x1, y1) => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];   // igual que index.html línea 515
@@ -97,7 +98,7 @@ function doorFrame(ax, c, t, u0, u1, hd, type, y0) {
 
 /* muro: a,b en plano; open = [[ini, fin, tipo, antepecho, dintel, giro, abierta]] medidos desde a (el sentido puede ser negativo) */
 function wall(a, b, o = {}) {
-  const { h = 2.55, t = 0.15, base = 0, open = [], m = mat.wall, transom } = o;
+  const { h = 2.55, t = 0.15, base = 0, open = [], m = mat.wall, transom, parent } = o;
   const A = W2(...a), B = W2(...b);
   const ax = Math.abs(B[0] - A[0]) >= Math.abs(B[1] - A[1]) ? 0 : 1;   // 0: corre en x, 1: corre en z
   const c = A[1 - ax], sg = Math.sign(B[ax] - A[ax]) || 1, lo = Math.min(A[ax], B[ax]), hi = Math.max(A[ax], B[ax]);
@@ -109,9 +110,14 @@ function wall(a, b, o = {}) {
     const u0 = Math.min(abs(o0), abs(o1)), u1 = Math.max(abs(o0), abs(o1));
     holes.push([u0, u1, base + sill, base + hd]); ops.push({ u0, u1, type, sill, hd });
   }
+  // registro para block.js: los muros con block (t >= 0.115) se parten en bandas y se levantan hilada por hilada.
+  // nob: el faldón de la cochera (y = 19.93, base > 1.5) es la trabe T2, no lleva block.
+  const wid = WALLS.length, nob = base > 1.5 && a[1] === 19.93 && b[1] === 19.93;
+  const bl = !nob && t >= 0.115 && (m === 'plaster' || m === 'block' || m === 'walnut') && hi - lo >= 0.25 && h >= 0.3;
+  WALLS.push({ wid, a: A, b: B, ax, c, lo, hi, base, h, t, m, holes: holes.map((q) => [...q]), barda, bl, nob, par: (parent && parent.n) || 'scene' });
   for (const [p0, p1, q0, q1] of carve(lo, hi, base, base + h, holes)) {
     const bb = ax === 0 ? [p0, q0, c - t / 2, p1, q1, c + t / 2] : [c - t / 2, q0, p0, c + t / 2, q1, p1];
-    putCut(bb, m, barda ? 'barda' : 'struct');
+    putCut(bb, m, nob ? 'trabe' : barda ? 'barda' : 'struct', nob ? { tr: 'T2' } : bl ? { wid } : {});
   }
   for (const { u0, u1, type, sill, hd } of ops) {
     if (type === 'window' || type === 'glass') glazing(ax, c, t, u0, u1, base + sill, base + hd, transom);
@@ -344,6 +350,42 @@ const fachT = new THREE.Group(); up2.add(fachT);
 export { H1, F1, F2, F3, LOSA, JAC };
 export const toW = W2;
 export const ESC = rect(9.1, 8.36, 12.39, 11.72);        // hueco de la escalera en las losas 2.80 y 5.60 (igual que en el bloque, líneas 667 y 717)
+
+// ================================================================ estructura de obra (propuesta ilustrativa, no de cálculo)
+// Trabes y columnas que block.js dibuja (jaula, cimbra, colado). Coordenadas ya en mundo. ax 0: corre en x (c = z); ax 1: corre en z (c = x).
+// kind 'T' peraltada (T1 la dibuja block.js, T2 sale de la caja 'trabe' de arriba); 'TP' plana (solo existe su armado dentro de la losa).
+export const TRABES = [];
+{
+  const tb = (id, kind, ax, c, u0, u1, y0, y1, w, lvl) => {
+    const cw = ax === 0 ? c - CZ : c - CX, a = ax === 0 ? u0 - CX : u0 - CZ, b = ax === 0 ? u1 - CX : u1 - CZ;
+    TRABES.push({ id, kind, ax, c: cw, u0: Math.min(a, b), u1: Math.max(a, b), y0, y1, w, lvl });
+  };
+  tb('T1', 'T', 0, 3.65, 1.33, 7.66, 2.55, 2.95, 0.20, 1);
+  tb('T2', 'T', 0, 19.93, 6.89, 12.59, 2.10, 2.55, 0.20, 1);
+  tb('TP-a', 'TP', 1, 7.56, -0.10, 8.26, 2.55, 2.80, 0.30, 1);
+  tb('TP-b', 'TP', 0, 8.26, 1.33, 7.56, 2.55, 2.80, 0.30, 1);
+  tb('TP-c', 'TP', 0, 0, 7.485, 9.03, 2.55, 2.80, 0.30, 1);
+  tb('TP-d', 'TP', 0, 18.69, 5.79, 9.86, 2.55, 2.80, 0.30, 1);
+  tb('TP-e', 'TP', 1, 9.86, 18.69, 20.03, 2.55, 2.80, 0.30, 1);
+  tb('TP-f1', 'TP', 0, 20.69, 4.79, 12.59, 5.35, 5.60, 0.30, 2);
+  tb('TP-f2', 'TP', 1, 4.79, 18.31, 20.69, 5.35, 5.60, 0.30, 2);
+  // bordes de hueco: escalera en las dos losas y vaso del jacuzzi en la 5.60 (rect() da x0,y0 / x1,y0 / x1,y1 / x0,y1)
+  const hole = (id, r, y0, y1, lvl) => {
+    const [x0, z0, x1, z1] = [r[0][0], r[0][1], r[2][0], r[2][1]];
+    tb(id + 'n', 'TP', 0, z0, x0, x1, y0, y1, 0.25, lvl); tb(id + 's', 'TP', 0, z1, x0, x1, y0, y1, 0.25, lvl);
+    tb(id + 'w', 'TP', 1, x0, z0, z1, y0, y1, 0.25, lvl); tb(id + 'e', 'TP', 1, x1, z0, z1, y0, y1, 0.25, lvl);
+  };
+  hole('ESC1', ESC, 2.55, 2.80, 1); hole('ESC2', ESC, 5.35, 5.60, 2); hole('JAC', JAC, 5.35, 5.60, 2);
+}
+// columnas de concreto dentro del espesor del muro: sustituyen al castillo del mismo nodo (radio 0.25).
+// segs: un tramo por nivel con altura y semanas [armado, cimbra, colado, descimbra]
+const CW0 = [5.9, 6.3, 6.5, 7.0];
+export const COLS = [
+  { id: 'C1', cx: 1.43 - CX, cz: 3.65 - CZ, wx: 0.20, wz: 0.20, segs: [{ lvl: 0, y0: 0, y1: 2.35, w: CW0 }, { lvl: 1, y0: 2.55, y1: 5.15, w: [13.6, 13.9, 14.1, 14.7] }] },
+  { id: 'C2', cx: 7.56 - CX, cz: 3.65 - CZ, wx: 0.20, wz: 0.20, segs: [{ lvl: 0, y0: 0, y1: 2.35, w: CW0 }] },
+  { id: 'C4', cx: 6.97 - CX, cz: 19.78 - CZ, wx: 0.15, wz: 0.30, segs: [{ lvl: 0, y0: 0, y1: 2.10, w: CW0 }] },
+  { id: 'C5', cx: 12.39 - CX, cz: 19.78 - CZ, wx: 0.20, wz: 0.30, segs: [{ lvl: 0, y0: 0, y1: 2.10, w: CW0 }] },
+];
 
 
 // ================================================================ cimentación (cimRuns)
