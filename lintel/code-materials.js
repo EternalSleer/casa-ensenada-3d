@@ -5053,6 +5053,8 @@ window.LINTEL_CODEMAT = (function () {
     // (its trowel relief a third: on a pale wall the strokes' arcs showed as rings where the light grazes)
     // (and its clouds and strokes at half: the strokes turn patch by patch, and on a pale wall they drew rings)
     limewashEntry: (m) => WHITE_WALL(m), marbleDark: slabs, marbleKitchen: kitchenSlabs,
+    // (casa Ensenada, local: aplanado fino liso de la fachada, blanco limpio y gris claro)
+    facadeWhite: (m) => flatWall(m, [0.66, 0.65, 0.625], 'flatWallFacade'), facadeGray: (m) => flatWall(m, [0.30, 0.298, 0.29], 'flatWallGray'),
     larch: (m) => descan(m, 'larch', [0.003, 0.003, 0.004]),
     lawn: (m) => descan(m, 'lawn', [0.187, 0.228, 0.1], GRASS), land: (m) => descan(m, 'land', [0.092, 0.103, 0.053], GRASS),
     gravel: (m) => gravel(m, 'gravel', [0.411, 0.38, 0.313], 0.5), gravelCourt: (m) => courtGravel(m, 'gravelCourt2', [0.139, 0.143, 0.151]),

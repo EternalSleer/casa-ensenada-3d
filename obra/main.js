@@ -150,12 +150,12 @@ function weekAt(v) {
 // face: la cámara sale de la casa, sube sobre ella y baja a la calle frente a la fachada; faceHold: se queda ahí; out: sale a la hoja
 const END = { face: [29.5, 31.0], faceHold: [31.0, 31.6], out: [31.6, 33.3], unpour: [33.3, 34.3], zoom: [34.3, 35.4], total: 36.0 };
 const KW = toK(...(() => { const w = walkAt(V_END); return [w.P, w.L, EYE_FOV]; })());
-const KF = toK(PL(7.0, 1.7, 31.0), PL(7.4, 3.9, 19.9), EYE_FOV);   // la fachada principal desde la calle (eje 9)
+const KF = toK(PL(4.0, 1.65, 29.6), PL(6.7, 3.5, 19.3), EYE_FOV);   // la fachada principal desde la calle (eje 9)
 // del final del recorrido (dentro de la cocina) la cámara sale por la puerta del jardín por donde entró, sube por detrás de la casa, la
 // sobrevuela y baja a la calle frente a la fachada. Llaves [t 0–1, ojo x, altura, y, mira x, altura, y] del plano, curva suave como LEGS.
 const FACE_KEYS = [
   [0, 7.20, 1.70, 8.10, 2.2, 1.5, 4.2], [0.12, 8.30, 1.75, 5.2, 8.4, 1.7, 2.0], [0.24, 8.35, 1.75, 3.6, 8.0, 1.8, 0.0], [0.34, 7.00, 2.3, 1.8, 6.5, 2.5, 8.0],
-  [0.46, 6.20, 4.2, -1.2, 6.5, 3.0, 10.0], [0.58, 6.50, 8.0, 0.8, 7.0, 3.0, 12.0], [0.72, 7.30, 13.5, 8.0, 7.2, 3.0, 17.0], [0.88, 7.00, 13.0, 27.0, 7.2, 3.5, 19.9], [1.0, 7.0, 1.7, 31.0, 7.4, 3.9, 19.9],
+  [0.46, 6.20, 4.2, -1.2, 6.5, 3.0, 10.0], [0.58, 6.50, 8.0, 0.8, 7.0, 3.0, 12.0], [0.72, 7.30, 13.5, 8.0, 7.2, 3.0, 17.0], [0.88, 5.2, 12.5, 27.5, 6.9, 3.4, 19.4], [1.0, 4.0, 1.65, 29.6, 6.7, 3.5, 19.3],
 ];
 const FACE_P = new THREE.CatmullRomCurve3(FACE_KEYS.map((k) => PL(k[1], k[2], k[3])), false, 'centripetal');
 const FACE_L = new THREE.CatmullRomCurve3(FACE_KEYS.map((k) => PL(k[4], k[5], k[6])), false, 'centripetal');

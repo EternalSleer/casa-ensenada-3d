@@ -1,6 +1,6 @@
 // Basado en flat-to-3d/04-build-time-lapse de Sam Aing (MIT), ver LICENSE-flat-to-3d.txt (el motor de partes).
-// Copiado de index.html el 2026-11-04 (bloque declarativo de arquitectura, líneas 605–802: de floor([[0, 0] hasta antes de "portones"; incluye losas al paño y la sección fachada), SIN editar coordenadas.
-// Motor: los grupos fachPB/fachPA/fachT dan partes k 'fachada' (world.js las reparte por material); los portones de listones van en extras().
+// Copiado de index.html el 2026-11-04 (bloque declarativo de arquitectura, líneas 605–802: de floor([[0, 0] hasta antes de "puerta del acceso"; incluye losas al paño y la sección fachada), SIN editar coordenadas.
+// Motor: los grupos fachPB/fachPA/fachT dan partes k 'fachada' (world.js las reparte por material); la hoja de la puerta pivotante va en extras().
 // Si cambia el plano, recopiar el bloque (entre las marcas "inicio del bloque copiado" y "fin del bloque copiado").
 //
 // Aquí el bloque corre contra OTRA implementación de wall(), slab(), floor(), box() y rect(): no crean mallas de three.js
@@ -19,7 +19,8 @@ const scene = new Grp('scene'), up1 = new Grp('up1'), up2 = new Grp('up2'), rise
 const MAT = {
   wall: 'plaster', fence: 'block', fenceL: 'block', woodClad: 'walnut', tile: 'oak', paver: 'travertine',
   conc: 'conc', grass: 'grass', frame: 'steel', wood: 'teak', casing: 'white',
-  facadeConc: 'concAp', laja: 'laja', fins: 'fins', black: 'dark', led: 'led', pebble: 'gravel',
+  plasterW: 'plaster', grayPanel: 'grayPanel', fluted: 'fluted', woodSoffit: 'woodSoffit', stoneLight: 'travertine',
+  black: 'dark', led: 'led', pebble: 'gravel',
 };
 const mat = new Proxy(MAT, { get: (t, k) => { if (!(k in t)) throw new Error('casa.js: mat.' + String(k) + ' sin equivalente'); return t[k]; } });
 const M = () => 'stairSteel';                                 // el acero de los peldaños (k 'stair')
@@ -116,7 +117,7 @@ function wall(a, b, o = {}) {
     if (type === 'window' || type === 'glass') glazing(ax, c, t, u0, u1, base + sill, base + hd, transom);
     else if (type === 'door' || type === 'doorR' || type === 'main' || type === 'ext') doorFrame(ax, c, t, u0, u1, hd, type, base);
   }
-  if (base === 0 && h > 1.5) footWalls.push({ a: A, b: B, t, barda });
+  if (base === 0 && (h > 1.5 || barda)) footWalls.push({ a: A, b: B, t, barda });
   return {};
 }
 
@@ -165,10 +166,10 @@ wall([10.82, 11.82], [10.82, 13.86], PB);
 // bardas de colindancia
 wall([0, 0], [0, 19.93], { h: 2.4, t: .15, m: mat.fenceL });
 wall([0, 0], [9.03, 0], { h: 2.4, t: .15, m: mat.fence });
-// barda al pie del terreno con acceso peatonal y portón eléctrico
-wall([0, 19.93], [5.85, 19.93], { h: 2.1, t: .2, m: mat.wall });
-wall([6.88, 19.93], [7.02, 19.93], { h: 2.1, t: .2, m: mat.wall });
-wall([5.79, 19.93], [12.49, 19.93], { base: 2.1, h: H1 - 2.1, t: .2, m: mat.wall });   // dintel bajo la losa
+// barda al pie del terreno (2.10, aplanado blanco liso); la cochera queda abierta y el acceso peatonal lleva puerta pivotante
+wall([0, 19.93], [4.78, 19.93], { h: 2.1, t: .2, m: mat.plasterW });
+wall([6.88, 19.93], [7.02, 19.93], { h: 2.1, t: .2, m: mat.plasterW });
+wall([6.88, 19.93], [12.49, 19.93], { base: 2.1, h: H1 - 2.1, t: .2, m: mat.plasterW });
 
 /* escalera en U: 17 peraltes de 0.165 hasta N.P.T. 2.80 */
 {
@@ -188,7 +189,7 @@ const UP = { base: F1, h: H2, t: EXT, parent: up1, cap: false };
 wall([7.56, 0], [7.56, 8.26], { ...UP, t: .15, open: [[2.0, 3.45, 'window', .9, 2.2]] });        // ventana de la salita al jardín
 wall([7.56, 0], [12.49, 0], { ...UP, open: [[1.0, 3.5, 'window', 1.6, 2.2]] });
 wall([12.49, 0], [12.49, 19.93], UP);
-wall([12.49, 19.93], [9.86, 19.93], { ...UP, open: [[0.6, 2.0, 'window', 1.4, 2.2]] });
+wall([12.49, 19.93], [9.86, 19.93], { ...UP, m: mat.plasterW, open: [[0.6, 2.0, 'window', 1.4, 2.2]] });
 wall([9.86, 19.93], [9.86, 18.69], UP);
 wall([9.86, 18.69], [5.79, 18.69], { ...UP, open: [[0.52, 1.9, 'open', 0, 2.35], [1.9, 3.62, 'glass', 0, 2.35]] });            // cancel corredizo al balcón
 wall([5.79, 18.69], [5.79, 18.21], UP);
@@ -276,48 +277,66 @@ slab([[5.57, 8.04], [12.59, 8.04], [12.59, 16.57], [7.35, 16.57], [7.35, 15.03],
 }
 
 /* ---------- fachada ---------- */
-// barda de laja con jardinera, vigas de concreto aparente, caja blanca con celosía de madera, balcón remetido y volumen de concreto con ventana enmarcada
+// fachada moderna: volúmenes blancos lisos, lambrín grafito acanalado, losa volada con plafón de madera y spots, puerta pivotante de madera, balcón con jardinera, caja blanca sobre la cochera abierta
 const fachPB = new THREE.Group(); scene.add(fachPB);
 const fachPA = new THREE.Group(); up1.add(fachPA);
 const fachT = new THREE.Group(); up2.add(fachT);
 {
-  // planta baja
-  box(5.85, 2.10, .05, 2.925, 20.055, 0, mat.laja, fachPB);              // piedra seca sobre la barda
-  box(5.95, .46, .30, 2.925, 19.98, 2.10, mat.facadeConc, fachPB);       // remate de concreto (sube hasta 2.56: cubre el canto blanco de la barda de 2.55)
-  box(3.87, .70, .06, 7.725, 20.06, 2.10, mat.facadeConc, fachPB);       // viga sobre acceso y cochera (cubre también el canto de la losa)
-  box(2.93, .45, .06, 11.125, 20.06, 2.10, mat.facadeConc, fachPB);      // viga bajo la caja blanca
-  box(.22, 2.10, .24, 12.49, 19.94, 0, mat.facadeConc, fachPB);          // pilar de esquina (1 cm más ancho que el muro: sin coplanares)
-  box(.18, 2.10, .24, 6.95, 19.94, 0, mat.facadeConc, fachPB);           // pilar entre portones
-  box(.04, 2.55, 5.87, 6.875, 16.895, 0, mat.laja, fachPB);              // piedra del muro del andador
-  box(5.20, .45, .50, 2.90, 20.33, 0, mat.facadeConc, fachPB);           // jardinera de calle
-  box(5.08, .02, .42, 2.90, 20.33, .43, mat.pebble, fachPB);
-  box(6.70, .028, .03, 9.19, 20.075, 2.075, mat.led, fachPB);            // LED bajo la viga
-  box(5.08, .028, .03, 2.90, 20.10, .45, mat.led, fachPB);               // LED que baña la laja sobre la jardinera
-  box(.03, .03, 5.80, 6.83, 16.90, .005, mat.led, fachPB);               // LED rasante del andador
-  // planta alta
-  box(.20, 2.80, .66, 12.49, 20.36, 2.55, mat.wall, fachPA);             // caja blanca volada: poste derecho
-  box(.20, 2.80, .76, 9.76, 20.31, 2.55, mat.wall, fachPA);              // poste izquierdo
-  box(2.53, .25, .76, 11.125, 20.31, 2.55, mat.wall, fachPA);            // plafón de la caja
-  box(2.53, 2.55, .02, 11.125, 20.27, 2.80, mat.frame, fachPA);          // fondo oscuro mate de la celosía (tapa también la ventana: se lee como ranura, no como parche blanco)
-  for (let i = 0; i < 17; i++) box(.05, 2.55, .12, 9.97 + i * .145, 20.36, 2.80, mat.fins, fachPA);   // celosía vertical
-  box(2.53, .04, .04, 11.125, 20.29, 2.80, mat.frame, fachPA); box(2.53, .04, .04, 11.125, 20.29, 5.31, mat.frame, fachPA);
-  box(2.40, .028, .03, 11.125, 20.60, 2.525, mat.led, fachPA);           // LED del plafón
-  box(4.07, .04, .06, 7.825, 19.93, 3.80, mat.frame, fachPA);            // tapa del barandal del balcón
-  box(4.07, .03, 1.90, 7.825, 19.70, 5.32, mat.fins, fachPA);            // plafón de madera bajo el volado de la terraza
-  box(4.07, .028, .03, 7.825, 20.43, 5.292, mat.led, fachPA);            // LED bajo el plafón de madera
-  box(.32, 3.25, .04, 1.49, 18.33, 2.10, mat.facadeConc, fachPA);        // volumen de concreto alrededor de la ventana del vestidor 2
-  box(1.40, 3.25, .04, 5.09, 18.33, 2.10, mat.facadeConc, fachPA);
-  box(2.74, 1.70, .04, 3.02, 18.33, 2.10, mat.facadeConc, fachPA);
-  box(2.74, .35, .04, 3.02, 18.33, 5.00, mat.facadeConc, fachPA);
-  box(2.86, .06, .25, 3.02, 18.475, 5.00, mat.frame, fachPA);            // marco de acero negro de 25 cm de fondo
-  box(2.86, .06, .25, 3.02, 18.475, 3.74, mat.frame, fachPA);
-  box(.06, 1.32, .25, 1.62, 18.475, 3.74, mat.frame, fachPA);
-  box(.06, 1.32, .25, 4.42, 18.475, 3.74, mat.frame, fachPA);
-  // terraza
-  box(7.80, .20, .20, 8.69, 20.59, 5.15, mat.wall, fachT);               // faldón blanco
-  box(7.60, .028, .03, 8.69, 20.51, 5.125, mat.led, fachT);              // LED lineal
-  box(3.46, 1.25, .04, 3.06, 18.33, 5.35, mat.facadeConc, fachT);        // losa y pretil del volumen de concreto
-  box(7.70, .04, .06, 8.64, 20.69, 6.60, mat.frame, fachT);              // tapa del barandal de vidrio
+  const YF = 18.33, D = .04;   // forro del paño 18.21 (cara 18.31)
+  // ---- planta baja (fachPB)
+  box(2.40, 2.55, D, 2.53, YF, 0, mat.plasterW, fachPB);            // volumen blanco x 1.33–3.73
+  box(1.00, 1.70, D, 4.23, YF, 0, mat.plasterW, fachPB);            // bajo la ventana 3.73–4.73
+  box(1.00, .35, D, 4.23, YF, 2.20, mat.plasterW, fachPB);
+  box(.06, 2.55, D, 4.76, YF, 0, mat.plasterW, fachPB);
+  box(.90, 2.55, D, 5.24, YF, 0, mat.grayPanel, fachPB);            // remetido gris 4.79–5.69
+  box(.07, 2.25, .004, 1.49, 18.352, .30, mat.frame, fachPB);       // ranura: canal oscuro
+  box(.035, 2.25, .01, 1.49, 18.355, .30, mat.led, fachPB);         //          y tira LED
+  box(1.06, 2.55, .16, 5.32, 20.03, 0, mat.fluted, fachPB);         // lambrín grafito (y 19.95–20.11)
+  for (let i = 0; i < 21; i++) box(.03, 2.55, .04, 4.815 + i * .05, 20.13, 0, mat.fluted, fachPB);   // estrías
+  box(1.03, .12, .20, 6.365, 19.93, 2.43, mat.woodClad, fachPB);    // dintel de madera de la pivotante
+  box(.02, 2.53, 5.91, 6.885, 16.865, 0, mat.woodClad, fachPB);     // madera en el muro x 6.97 del andador (no toca los bolardos)
+  box(1.0, .02, 5.96, 6.39, 16.85, 2.53, mat.woodSoffit, fachPB);   // plafón de madera del andador
+  [15.0, 16.6, 18.2].forEach(y => box(.07, .008, .07, 6.39, y, 2.522, mat.led, fachPB));
+  box(.03, .03, 5.80, 6.83, 16.90, .005, mat.led, fachPB);          // LED rasante del andador
+  // fondo de la cochera: travertino entre las puertas (vestíbulo x 7.51–8.45, herramientas 11.60–12.25)
+  box(.46, 2.55, .03, 7.275, 13.975, 0, mat.stoneLight, fachPB);
+  box(3.15, 2.55, .03, 10.025, 13.975, 0, mat.stoneLight, fachPB);
+  box(.14, 2.55, .03, 12.32, 13.975, 0, mat.stoneLight, fachPB);
+  box(.94, .33, .03, 7.98, 13.975, 2.22, mat.stoneLight, fachPB);
+  box(.65, .33, .03, 11.925, 13.975, 2.22, mat.stoneLight, fachPB);
+  box(5.30, .02, .03, 9.74, 14.01, 2.50, mat.led, fachPB);          // LED rasante del muro de fondo
+  // exterior: cochera, pasto y losas de paso
+  box(5.50, .03, 1.60, 9.75, 20.73, -.02, mat.conc, fachPB);
+  box(5.70, .02, 1.50, 2.85, 20.78, -.015, mat.grass, fachPB);
+  [20.35, 20.90, 21.45].forEach(y => box(1.30, .04, .42, 6.37, y, -.02, mat.stoneLight, fachPB));
+  // ---- planta alta (fachPA)
+  box(.32, 2.80, D, 1.49, YF, 2.55, mat.plasterW, fachPA);          // 1.33–1.65
+  box(.40, 2.80, D, 4.59, YF, 2.55, mat.plasterW, fachPA);          // 4.39–4.79
+  box(2.74, 1.25, D, 3.02, YF, 2.55, mat.plasterW, fachPA);         // bajo la ventana del vestidor 2
+  box(2.74, .35, D, 3.02, YF, 5.00, mat.plasterW, fachPA);
+  box(.90, 2.77, D, 5.24, YF, 2.55, mat.grayPanel, fachPA);
+  box(.07, 2.80, .004, 1.49, 18.352, 2.55, mat.frame, fachPA); box(.035, 2.80, .01, 1.49, 18.355, 2.55, mat.led, fachPA);
+  box(1.06, 2.77, .16, 5.32, 20.03, 2.55, mat.fluted, fachPA);
+  for (let i = 0; i < 21; i++) box(.03, 2.77, .04, 4.815 + i * .05, 20.13, 2.55, mat.fluted, fachPA);
+  box(5.74, 1.10, .45, 9.75, 20.265, 2.10, mat.plasterW, fachPA);   // caja blanca sobre la cochera (y 20.04–20.49)
+  box(5.50, .012, .03, 9.75, 20.42, 2.088, mat.led, fachPA);        // plafón iluminado de la caja
+  box(3.97, .04, .06, 7.875, 19.93, 3.80, mat.frame, fachPA);       // tapa del barandal del balcón (x 5.89–9.86)
+  box(5.06, .03, 1.68, 7.33, 19.64, 5.32, mat.woodSoffit, fachPA);  // plafón del volado: x 4.80–9.86, y 18.80–20.48
+  box(.89, .03, .48, 5.245, 18.56, 5.32, mat.woodSoffit, fachPA);   //   x 4.80–5.69, y 18.32–18.80
+  box(2.73, .03, .44, 11.225, 20.26, 5.32, mat.woodSoffit, fachPA); //   x 9.86–12.59, y 20.04–20.48
+  [[5.25, 20.2], [6.45, 20.2], [7.65, 20.2], [8.85, 20.2], [10.35, 20.26], [11.55, 20.26], [6.45, 19.3], [7.65, 19.3], [8.85, 19.3], [5.25, 18.9]]
+    .forEach(([x, y]) => box(.07, .008, .07, x, y, 5.312, mat.led, fachPA));   // spots empotrados
+  // ---- terraza (fachT)
+  box(3.46, 1.25, D, 3.06, YF, 5.35, mat.plasterW, fachT);          // canto de losa y pretil
+  box(3.46, .60, .215, 3.06, 18.2425, 6.60, mat.plasterW, fachT);   // pretil alto hasta 7.20
+  box(.07, 1.55, .004, 1.49, 18.352, 5.35, mat.frame, fachT); box(.035, 1.55, .01, 1.49, 18.355, 5.35, mat.led, fachT);
+  box(7.82, .32, .22, 8.69, 20.60, 5.28, mat.plasterW, fachT);      // faldón del volado (x 4.78–12.60), delgado para que se vea el plafón de madera
+  box(7.70, .04, .06, 8.64, 20.69, 6.60, mat.frame, fachT);         // tapa del barandal de vidrio
+  box(2.85, 2.60, D, 8.775, 16.59, 5.60, mat.grayPanel, fachT);     // volumen gris: x 7.35–10.20
+  box(.26, 2.60, D, 12.46, 16.59, 5.60, mat.grayPanel, fachT);      //   x 12.33–12.59
+  box(2.13, .50, D, 11.265, 16.59, 7.70, mat.grayPanel, fachT);     //   sobre el cancel
+  box(1.78, 2.60, D, 6.46, 15.05, 5.60, mat.grayPanel, fachT);      //   frente remetido x 5.57–7.35
+  box(D, 2.60, 1.54, 7.33, 15.80, 5.60, mat.grayPanel, fachT);      //   costado x 7.35
 }
 
 // ================================================================ fin del bloque copiado
@@ -461,7 +480,7 @@ export function cimRuns() {
   return RUNS;
 }
 
-// partes de obra que index.html no tiene (cimentación, firme, portones de listones, acabado de la terraza y agua del jacuzzi)
+// partes de obra que index.html no tiene (cimentación, firme, puerta pivotante, acabado de la terraza y agua del jacuzzi)
 function extras() {
   const out = [];
   // firme de planta baja, 10 cm (y -0.10..0): interior, cochera y andador (los polígonos de los pisos de las líneas 605–607)
@@ -482,21 +501,11 @@ function extras() {
       }
     }
   }
-  // portón de la cochera 5.45 x 2.08 en P(9.755, 19.95), y 0.02..2.10 (index.html) y puerta peatonal 0.97 x 2.08 en P(6.85, 19.95):
-  // bastidor de acero de 5 cm y listones de madera (cochera: 16 horizontales de .09 cada .125; peatonal: 7 verticales de .05 cada .12)
+  // puerta pivotante del acceso peatonal (index.html: hoja de madera 1.00 x 2.42 con eje a 10 cm del canto oriente, P(6.76, 19.93)), cerrada; la cochera ya no lleva portón
   {
-    const [gx, gz] = W2(9.755, 19.95), [px, pz] = W2(6.85, 19.95);
-    const g = (b, m, id) => out.push({ t: 'box', b, m, k: 'gate', lvl: 0, g: id });
-    const x0 = gx - 2.725, x1 = gx + 2.725, y0 = 0.02, y1 = 2.10, zg = [gz - 0.03, gz + 0.03];
-    g([x0, y0, zg[0], x1, y0 + 0.05, zg[1]], 'steel', 'cochera'); g([x0, y1 - 0.05, zg[0], x1, y1, zg[1]], 'steel', 'cochera');
-    g([x0, y0 + 0.05, zg[0], x0 + 0.05, y1 - 0.05, zg[1]], 'steel', 'cochera'); g([x1 - 0.05, y0 + 0.05, zg[0], x1, y1 - 0.05, zg[1]], 'steel', 'cochera');
-    for (let i = 0; i < 16; i++) { const yc = y0 + 0.05 + 0.0625 + i * 0.125; g([x0 + 0.05, yc - 0.045, gz - 0.0175, x1 - 0.05, yc + 0.045, gz + 0.0175], 'fins', 'cochera'); }
-    g([x0 + 0.05, y0 + 0.05, gz - 0.0275, x1 - 0.05, y1 - 0.05, gz - 0.0175], 'dark', 'cochera');   // fondo oscuro mate tras los listones
-    const q0 = px - 0.97, q1 = px, h0 = 0.0, h1 = 2.08, zp = [pz - 0.025, pz + 0.025];
-    g([q0, h0, zp[0], q1, h0 + 0.05, zp[1]], 'steel', 'peatonal'); g([q0, h1 - 0.05, zp[0], q1, h1, zp[1]], 'steel', 'peatonal');
-    g([q0, h0 + 0.05, zp[0], q0 + 0.05, h1 - 0.05, zp[1]], 'steel', 'peatonal'); g([q1 - 0.05, h0 + 0.05, zp[0], q1, h1 - 0.05, zp[1]], 'steel', 'peatonal');
-    g([q0 + 0.05, h0 + 0.05, pz - 0.0275, q1 - 0.05, h1 - 0.05, pz - 0.0125], 'dark', 'peatonal');
-    for (let i = 0; i < 7; i++) { const xc = (q0 + q1) / 2 + (i - 3) * 0.12; g([xc - 0.025, h0 + 0.05, pz - 0.0125, xc + 0.025, h1 - 0.05, pz + 0.0125], 'fins', 'peatonal'); }
+    const [, pz] = W2(6.76, 19.93), [qx0] = W2(5.86, 0), [qx1] = W2(6.86, 0), [jx] = W2(5.965, 0);
+    out.push({ t: 'box', b: [qx0, 0.01, pz - 0.025, qx1, 2.44, pz + 0.025], m: 'walnut', k: 'gate', lvl: 0, g: 'peatonal' });
+    out.push({ t: 'box', b: [jx, 0.30, pz + 0.025, jx + 0.025, 1.90, pz + 0.055], m: 'steel', k: 'gate', lvl: 0, g: 'peatonal' });
   }
   // acabado de la terraza: el contorno de la losa 5.60 menos el vaso del jacuzzi y la escalera, a F2 + 6 mm
   out.push({
