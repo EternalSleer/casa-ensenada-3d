@@ -137,6 +137,7 @@ function mkRnd(seed) { return () => { seed = (seed + 0x6D2B79F5) | 0; let t = Ma
 
 export function planObra(o) {
   const { walls, trabes, cols, slabs, Fhat, finPl, sOf, LV, phone = false } = o;
+  const concWalls = o.conc || [];
   const samples = o.samples || [];
   const rnd = mkRnd(7);
   const acc = { cmu: newAcc(true), cmuA: newAcc(true), conc: newAcc(), rebar: newAcc(), timber: newAcc(), ply: newAcc(), eps: newAcc(), cap: newAcc() };
@@ -186,6 +187,33 @@ export function planObra(o) {
       bands.push(b);
     }
   }
+  // muros de concreto armado (vigas de gran peralte): la banda coincidente deja de ser de block
+  for (const b of bands) for (const m of concWalls) {
+    if (b.lvl === m.lvl && b.ax === m.ax && Math.abs(b.c - m.c) < 0.02 && b.lo >= m.u0 - 0.02 && b.hi <= m.u1 + 0.02) b.conc = m.id;
+  }
+  for (const b of bands) {
+    if (!b.conc) continue;
+    b.Wp = b.Ws + 0.8; b.elo = b.lo; b.ehi = b.hi;
+    for (const q of bands) {   // esquina entre dos muros de concreto: el del eje x llega al canto exterior, el del eje z se corta contra su cara
+      if (!q.conc || q.ax === b.ax || b.c < q.lo - 0.02 || b.c > q.hi + 0.02) continue;
+      for (const k of ['lo', 'hi']) {
+        if (Math.abs(b[k] - q.c) > q.bw / 2 + 0.02) continue;
+        const sg = k === 'lo' ? -1 : 1;
+        b[k === 'lo' ? 'elo' : 'ehi'] = b.ax === 0 ? q.c + sg * q.bw / 2 : q.c - sg * q.bw / 2;
+      }
+    }
+  }
+  const concEnts = (b) => {   // huellas de muros de concreto que cruzan a una banda de block: { u0, u1, y0, y1 } a lo largo de b
+    const out = [], q0 = b.c - b.bw / 2, q1 = b.c + b.bw / 2;
+    for (const m of bands) {
+      if (!m.conc || m === b || m.lvl !== b.lvl) continue;
+      const mu = [m.elo, m.ehi], mq = [m.c - m.bw / 2, m.c + m.bw / 2];
+      const [ua, ub, qa, qb] = b.ax === m.ax ? [...mu, ...mq] : [...mq, ...mu];
+      if (qb <= q0 + 1e-3 || qa >= q1 - 1e-3 || ub <= b.lo + E || ua >= b.hi - E) continue;
+      out.push({ u0: ua, u1: ub, y0: m.yb, y1: m.yt });
+    }
+    return out;
+  };
   const outFn = (b) => (b.out === 'aparente' ? () => 0 : b.out === 'nogal' ? (x, y, z) => 32.02 + 0.6 * sOf(z) : (x, y, z) => finPl(b.lvl)(x, y, z) + 0.02);
   const XZ = (b, u, q) => (b.ax === 0 ? [u, q] : [q, u]);   // (a lo largo, transversal) -> (x, z)
   const through = (b, x, z, tol = 0.06) => {
@@ -223,10 +251,11 @@ export function planObra(o) {
     for (const b of bs) for (const u of [b.lo, b.hi]) { const [x, z] = XZ(b, u, b.c); add(x, z, 0); }
     for (const b of bs) {
       const cands = [];
-      for (const h of b.holes) cands.push(h.u0 - 0.08, h.u1 + 0.08);
+      if (!b.conc) for (const h of b.holes) cands.push(h.u0 - 0.08, h.u1 + 0.08);
       for (const u of cands) if (u - b.lo > 0.2 && b.hi - u > 0.2) { const [x, z] = XZ(b, u, b.c); add(x, z, 1); }
     }
     for (const b of bs) {
+      if (b.conc) continue;
       const on = nodes.filter((n) => through(b, n.x, n.z, 0.06)).map((n) => (b.ax === 0 ? n.x : n.z)).sort((p, q) => p - q);
       for (let i = 0; i + 1 < on.length; i++) {
         const d = on[i + 1] - on[i];
@@ -249,7 +278,8 @@ export function planObra(o) {
       if (k >= 0) nodes[k] = nn; else nodes.push(nn);
     }
     for (const n of nodes) {
-      const thr = bs.filter((b) => through(b, n.x, n.z));
+      if (!n.col && bs.some((b) => b.conc && through(b, n.x, n.z))) continue;   // sobre un muro de concreto no va castillo
+      const thr = bs.filter((b) => !b.conc && through(b, n.x, n.z));
       if (!thr.length && !n.col) continue;
       let wx = 0.15, wz = 0.15, minx = Infinity, minz = Infinity;
       for (const b of thr) { if (b.ax === 1) minx = Math.min(minx, b.bw); else minz = Math.min(minz, b.bw); }
@@ -302,9 +332,10 @@ export function planObra(o) {
     const out = c.out;
     const ya = c.yb + 0.05;
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) rod(R, 1, ya, c.top + 0.05, cx + sx * rx, cz + sz * rz, 0.0048, c.Wr, c.aparente ? c.Wk + 0.5 : out);
-    const nst = Math.max(1, Math.floor((c.top - c.yb - 0.15) / stirSp) + 1);
+    const sSp = c.col ? (phone ? 0.30 : 0.15) : stirSp;   // columnas: estribos más juntos
+    const nst = Math.max(1, Math.floor((c.top - c.yb - 0.15) / sSp) + 1);
     for (let i = 0; i < nst; i++) {
-      const y = c.yb + 0.10 + i * stirSp;
+      const y = c.yb + 0.10 + i * sSp;
       if (y > c.top - 0.03) break;
       ring(R, cx, cz, hx - 0.022, hz - 0.022, y, y + 0.006, 0.006, c.Wr, c.aparente ? c.Wk + 0.5 : out);
     }
@@ -348,6 +379,7 @@ export function planObra(o) {
     const q0 = b.c - b.bw / 2, q1 = b.c + b.bw / 2;
     const ents = b.castles.map((c) => (b.ax === 0 ? [c.x0, c.x1, c.z0, c.z1] : [c.z0, c.z1, c.x0, c.x1]));   // [u0, u1, q0, q1] de cada castillo
     const dir = b.uS === b.lo ? 1 : -1;
+    const cEnts = concEnts(b);
     const mkb = (a0, a1, y0, y1, c0, c1, wk, out, o) => (b.ax === 0 ? box(A, a0, y0, c0, a1, y1, c1, wk, out, o) : box(A, c0, y0, a0, c1, y1, a1, wk, out, o));
     for (let i = 0; i < b.n; i++) {
       const y0 = b.yb + i * b.hc, y1 = y0 + b.hc;
@@ -357,6 +389,7 @@ export function planObra(o) {
         const c = b.castles[k];
         if (y1 > c.yb + E && y0 < c.top - E) spans = subIv(spans, ents[k][0], ents[k][1]);
       }
+      for (const e of cEnts) if (y1 > e.y0 + E && y0 < e.y1 - E) spans = subIv(spans, e.u0, e.u1);   // el block termina contra el concreto
       const org = b.lo - (i % 2 ? 0.20 : 0);
       let first = Infinity, last = -Infinity;
       for (const [s0, s1] of spans) {
@@ -410,6 +443,7 @@ export function planObra(o) {
       const yd0 = b.yt - b.dalaH, hw = b.bw / 2 - 0.002, outD = outFn(b);
       let dsp = [[b.lo, b.hi]];
       for (const h of b.holes) if (h.dalaCut) dsp = subIv(dsp, h.u0, h.u1);
+      for (const e of cEnts) if (b.yt > e.y0 + E && yd0 < e.y1 - E) dsp = subIv(dsp, e.u0, e.u1);
       const Wa = b.We + 0.06, Wcd = Wa + 0.10;
       for (const [s0, s1] of dsp) {
         const nseg = Math.max(1, Math.round((s1 - s0) / 1.2));
@@ -474,6 +508,95 @@ export function planObra(o) {
 
   // ------------------------------------------------------------ armado y cimbra de losas, trabes y columnas
   const camBlocked = (x, z, ylo, yhi, w0, w1) => samples.some((s) => s.y > ylo && s.y < yhi && (s.x - x) ** 2 + (s.z - z) ** 2 < 0.6 * 0.6 && (s.w === undefined || (s.w > w0 - 0.5 && s.w < w1 + 1)));
+
+  // ------------------------------------------------------------ muro de concreto armado: malla, cuerdas, cimbra de triplay y colado
+  function emitConcWall(b) {
+    const R = acc.rebar, T = acc.timber, P = acc.ply, C = acc.conc;
+    const lo = b.elo, hi = b.ehi, H = b.yt - b.yb, q0 = b.c - b.bw / 2, q1 = b.c + b.bw / 2, ax0 = b.ax === 0;
+    const hl = b.holes.map((h) => ({ u0: h.u0, u1: h.u1, y0: Math.max(h.y0, b.yb), y1: Math.min(h.y1, b.yt) })).filter((h) => h.u1 > lo && h.u0 < hi && h.y1 - h.y0 > 0.02);
+    const outB = outFn(b);
+    const wkP = (x, y, z) => b.Wp + 0.15 * clamp((y - b.yb) / H, 0, 1);
+    const outR = (x, y, z) => wkP(x, y, z) + 0.05;
+    const stag = (u) => (b.L >= 1 ? 0.2 * clamp(Math.abs(u - b.uS) / b.L, 0, 1) : 0);
+    const bxu = (AA, ua, ub, ya, yb2, qa, qb, wk, out, o2) => (ax0 ? box(AA, ua, ya, qa, ub, yb2, qb, wk, out, o2) : box(AA, qa, ya, ua, qb, yb2, ub, wk, out, o2));
+    const hrod = (u0, u1, y, q, r, wk) => (ax0 ? rod(R, 0, u0, u1, y, q, r, wk, outR) : rod(R, 2, u0, u1, q, y, r, wk, outR));
+    const vrod = (u, y0, y1, q, r, wk) => (ax0 ? rod(R, 1, y0, y1, u, q, r, wk, outR) : rod(R, 1, y0, y1, q, u, r, wk, outR));
+    // rectángulos del muro sin huecos: [u0, u1, y0, y1]
+    const rects = (ytop) => {
+      const ys = new Set([b.yb, ytop]);
+      for (const h of hl) for (const y of [h.y0, h.y1]) if (y > b.yb + E && y < ytop - E) ys.add(y);
+      const yy = [...ys].sort((p, q) => p - q), out = [];
+      for (let i = 0; i + 1 < yy.length; i++) {
+        let spans = [[lo, hi]];
+        for (const h of hl) if (h.y0 <= yy[i] + E && h.y1 >= yy[i + 1] - E) spans = subIv(spans, h.u0, h.u1);
+        for (const [s0, s1] of spans) if (s1 - s0 > 0.01) out.push([s0, s1, yy[i], yy[i + 1]]);
+      }
+      return out;
+    };
+    // colado de abajo hacia arriba
+    for (const [ra, rb, ya, yb2] of rects(b.yt)) bxu(C, ra, rb, ya, yb2, q0 + 0.002, q1 - 0.002, wkP, outB, { skip: ya <= b.yb + E ? 8 : 0 });
+    // armado: malla al centro, cuerdas y bordes de huecos
+    const sp = phone ? 0.40 : 0.20, rr = b.bw / 2 - 0.035;
+    for (let u = lo + 0.10; u < hi - 0.05; u += sp) {
+      let iv = [[b.yb + 0.04, b.yt + 0.05]];
+      for (const h of hl) if (u > h.u0 - 0.03 && u < h.u1 + 0.03) iv = subIv(iv, h.y0 - 0.03, h.y1 + 0.03);
+      for (const [a, c] of iv) if (c - a > 0.05) vrod(u, a, c, b.c - 0.007, 0.0048, b.Ws - 0.2 + stag(u));
+    }
+    for (let y = b.yb + 0.04; y <= b.yt - 0.04 + 1e-6; y += sp) {
+      let sps = [[lo + 0.03, hi - 0.03]];
+      for (const h of hl) if (y > h.y0 - 0.03 && y < h.y1 + 0.03) sps = subIv(sps, h.u0 - 0.03, h.u1 + 0.03);
+      for (const [a, c] of sps) if (c - a > 0.05) hrod(a, c, y, b.c + 0.007, 0.0048, b.Ws - 0.2 + stag((a + c) / 2));
+    }
+    for (const y of [b.yb + 0.06, b.yt - 0.06]) for (const dq of [-rr, rr]) {
+      let sps = [[lo + 0.03, hi - 0.03]];
+      for (const h of hl) if (y > h.y0 - 0.03 && y < h.y1 + 0.03) sps = subIv(sps, h.u0 - 0.03, h.u1 + 0.03);
+      for (const [a, c] of sps) if (c - a > 0.05) hrod(a, c, y, b.c + dq, 0.008, b.Ws - 0.2 + stag((a + c) / 2));
+    }
+    for (const h of hl) {
+      const wkh = b.Ws - 0.2 + stag((h.u0 + h.u1) / 2);
+      for (const y of [h.y0 - 0.05, h.y1 + 0.05]) {
+        if (y < b.yb + 0.04 || y > b.yt - 0.04) continue;
+        hrod(Math.max(lo + 0.03, h.u0 - 0.45), Math.min(hi - 0.03, h.u1 + 0.45), y, b.c - 0.018, 0.0063, wkh);
+      }
+      for (const u of [h.u0 - 0.05, h.u1 + 0.05]) {
+        if (u < lo + 0.03 || u > hi - 0.03) continue;
+        vrod(u, Math.max(b.yb + 0.04, h.y0 - 0.45), Math.min(b.yt + 0.05, h.y1 + 0.45), b.c + 0.018, 0.0063, wkh);
+      }
+    }
+    // cimbra: triplay de 16 mm a 2 mm del concreto en ambas caras, barrotes por fuera, cajón en cada hueco
+    const Wf = b.Ws + 0.3, Wd = b.Ws + 1.3, pt = 0.016;
+    const perp = bands.filter((q) => q !== b && q.lvl === b.lvl && q.ax !== b.ax);
+    const freeIv = (u0, u1, qp) => {   // tramo libre de muros que llegan por esa cara
+      let s = [[u0, u1]];
+      for (const q of perp) if (qp >= q.lo - 0.001 && qp <= q.hi + 0.001) s = subIv(s, q.c - q.bw / 2, q.c + q.bw / 2);
+      return s;
+    };
+    const rP = rects(b.yt + 0.02), rB = rects(b.yt);
+    for (const sg of [-1, 1]) {
+      const qa = sg < 0 ? q0 - 0.002 - pt : q1 + 0.002, qp = b.c + sg * (b.bw / 2 + 0.01);
+      for (const [ra, rb, ya, yb2] of rP) for (const [s0, s1] of freeIv(ra, rb, qp)) {
+        const n = Math.max(1, Math.round((s1 - s0) / 1.22));
+        for (let k = 0; k < n; k++) {
+          const a0 = s0 + ((s1 - s0) * k) / n + 0.002, a1 = s0 + ((s1 - s0) * (k + 1)) / n - 0.002, um = (a0 + a1) / 2;
+          bxu(P, a0, a1, ya, yb2, qa, qa + pt, Wf + stag(um), Wd + stag(um));
+        }
+      }
+      const qb = sg < 0 ? q0 - 0.020 - 0.10 : q1 + 0.020, qpb = b.c + sg * (b.bw / 2 + 0.06);
+      for (let u = lo + 0.15; u < hi - 0.1; u += 0.60) {
+        const x = ax0 ? u : b.c + sg * 0.3, z = ax0 ? b.c + sg * 0.3 : u;
+        if (camBlocked(x, z, b.yb, b.yt, Wf, Wd)) continue;
+        if (!freeIv(u - 0.025, u + 0.025, qpb).some(([a, c]) => a <= u - 0.025 + 1e-4 && c >= u + 0.025 - 1e-4)) continue;
+        for (const [ra, rb, ya, yb2] of rB) if (u - 0.025 >= ra + 0.03 && u + 0.025 <= rb - 0.03) bxu(T, u - 0.025, u + 0.025, ya, yb2, qb, qb + 0.10, Wf + 0.05 + stag(u), Wd + stag(u));
+      }
+    }
+    for (const h of hl) {   // cajón del hueco: cuatro tablas de 16 mm contra el concreto
+      const wk = Wf + 0.1 + stag((h.u0 + h.u1) / 2), wo = Wd + stag((h.u0 + h.u1) / 2), qa = q0 + 0.001, qb = q1 - 0.001;
+      bxu(P, h.u0 + 0.002, h.u0 + 0.002 + pt, h.y0 + 0.002, h.y1 - 0.002, qa, qb, wk, wo);
+      bxu(P, h.u1 - 0.002 - pt, h.u1 - 0.002, h.y0 + 0.002, h.y1 - 0.002, qa, qb, wk, wo);
+      if (h.y0 > b.yb + 0.01) bxu(P, h.u0 + 0.002 + pt, h.u1 - 0.002 - pt, h.y0 + 0.002, h.y0 + 0.002 + pt, qa, qb, wk, wo);
+      if (h.y1 < b.yt - 0.01) bxu(P, h.u0 + 0.002 + pt, h.u1 - 0.002 - pt, h.y1 - 0.002 - pt, h.y1 - 0.002, qa, qb, wk, wo);
+    }
+  }
   function emitBeam(tr) {
     const hw = tr.w / 2, ax = tr.ax;
     const slab = slabOf(tr.lvl);
@@ -597,11 +720,12 @@ export function planObra(o) {
       const cy = (b[1] + b[4]) / 2;
       const bd = bands.find((q) => q.wid === wid && cy >= q.yb0 - 1e-6 && cy <= q.yt + 1e-6) || bands.find((q) => q.wid === wid);
       if (!bd) return () => 0;
+      if (bd.conc) return (x, y, z) => bd.Wp + 0.15 * clamp((y - bd.yb) / Math.max(0.01, bd.yt - bd.yb), 0, 1);
       const top = bd.yt - bd.dalaH;
       return (x, y, z) => (y > top - 1e-6 ? bd.We + 0.08 : bd.Ws + bd.D * clamp((y - bd.yb) / Math.max(0.01, top - bd.yb), 0, 1));
     },
     emitLevel(lvl) {
-      for (const b of bands) if (b.lvl === lvl) emitBand(b);
+      for (const b of bands) if (b.lvl === lvl) { if (b.conc) emitConcWall(b); else emitBand(b); }
       for (const c of castles) if (c.lvl === lvl) emitCastle(c);
     },
     emitSlabs() {
@@ -620,6 +744,7 @@ export function planObra(o) {
     solids() {
       const out = [];
       for (const c of castles) out.push({ b: [c.x0, c.yb, c.z0, c.x1, c.top, c.z1], k: 'castillo' });
+      for (const b of bands) if (b.conc) out.push({ b: b.ax === 0 ? [b.elo, b.yb, b.c - b.bw / 2, b.ehi, b.yt, b.c + b.bw / 2] : [b.c - b.bw / 2, b.yb, b.elo, b.c + b.bw / 2, b.yt, b.ehi], k: 'muroConc' });
       for (const t of trabes) if (t.kind === 'T') out.push({ b: t.ax === 0 ? [t.u0, t.y0, t.c - t.w / 2, t.u1, t.y1, t.c + t.w / 2] : [t.c - t.w / 2, t.y0, t.u0, t.c + t.w / 2, t.y1, t.u1], k: 'trabe' });
       return out;
     },

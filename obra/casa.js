@@ -351,7 +351,7 @@ export { H1, F1, F2, F3, LOSA, JAC };
 export const toW = W2;
 export const ESC = rect(9.1, 8.36, 12.39, 11.72);        // hueco de la escalera en las losas 2.80 y 5.60 (igual que en el bloque, líneas 667 y 717)
 
-// ================================================================ estructura de obra (propuesta ilustrativa, no de cálculo)
+// ================================================================ estructura de obra (predimensionamiento: trabes peraltadas h ≈ L/10–L/12, trabes planas dentro de la losa bajo muros sin apoyo, columnas ≥ 20 cm)
 // Trabes y columnas que block.js dibuja (jaula, cimbra, colado). Coordenadas ya en mundo. ax 0: corre en x (c = z); ax 1: corre en z (c = x).
 // kind 'T' peraltada (T1 la dibuja block.js, T2 sale de la caja 'trabe' de arriba); 'TP' plana (solo existe su armado dentro de la losa).
 export const TRABES = [];
@@ -360,13 +360,14 @@ export const TRABES = [];
     const cw = ax === 0 ? c - CZ : c - CX, a = ax === 0 ? u0 - CX : u0 - CZ, b = ax === 0 ? u1 - CX : u1 - CZ;
     TRABES.push({ id, kind, ax, c: cw, u0: Math.min(a, b), u1: Math.max(a, b), y0, y1, w, lvl });
   };
-  tb('T1', 'T', 0, 3.65, 1.33, 7.66, 2.55, 2.95, 0.20, 1);
-  tb('T2', 'T', 0, 19.93, 6.89, 12.59, 2.10, 2.55, 0.20, 1);
+  tb('T1', 'T', 0, 3.65, 1.33, 7.66, 2.55, 3.15, 0.20, 1);   // claro 6.13 con muro y losa 5.60 encima: 20 × 60
+  tb('T2', 'T', 0, 19.93, 6.89, 12.59, 2.10, 2.80, 0.20, 1);   // monolítica con la losa 2.80: la jaula sube dentro de ella
   tb('TP-a', 'TP', 1, 7.56, -0.10, 8.26, 2.55, 2.80, 0.30, 1);
-  tb('TP-b', 'TP', 0, 8.26, 1.33, 7.56, 2.55, 2.80, 0.30, 1);
+  tb('TP-b', 'TP', 0, 8.26, 1.33, 7.56, 2.55, 2.80, 0.40, 1);   // borde del vacío de doble altura, 6.2 m
   tb('TP-c', 'TP', 0, 0, 7.485, 9.03, 2.55, 2.80, 0.30, 1);
   tb('TP-d', 'TP', 0, 18.69, 5.79, 9.86, 2.55, 2.80, 0.30, 1);
   tb('TP-e', 'TP', 1, 9.86, 18.69, 20.03, 2.55, 2.80, 0.30, 1);
+  tb('TP-g', 'TP', 0, 18.69, 5.79, 9.86, 5.35, 5.60, 0.30, 2);   // apoya la losa 5.60 que vuela 2 m sobre el balcón
   tb('TP-f1', 'TP', 0, 20.69, 4.79, 12.59, 5.35, 5.60, 0.30, 2);
   tb('TP-f2', 'TP', 1, 4.79, 18.31, 20.69, 5.35, 5.60, 0.30, 2);
   // bordes de hueco: escalera en las dos losas y vaso del jacuzzi en la 5.60 (rect() da x0,y0 / x1,y0 / x1,y1 / x0,y1)
@@ -381,11 +382,40 @@ export const TRABES = [];
 // segs: un tramo por nivel con altura y semanas [armado, cimbra, colado, descimbra]
 const CW0 = [5.9, 6.3, 6.5, 7.0];
 export const COLS = [
-  { id: 'C1', cx: 1.43 - CX, cz: 3.65 - CZ, wx: 0.20, wz: 0.20, segs: [{ lvl: 0, y0: 0, y1: 2.35, w: CW0 }, { lvl: 1, y0: 2.55, y1: 5.15, w: [13.6, 13.9, 14.1, 14.7] }] },
-  { id: 'C2', cx: 7.56 - CX, cz: 3.65 - CZ, wx: 0.20, wz: 0.20, segs: [{ lvl: 0, y0: 0, y1: 2.35, w: CW0 }] },
-  { id: 'C4', cx: 6.97 - CX, cz: 19.78 - CZ, wx: 0.15, wz: 0.30, segs: [{ lvl: 0, y0: 0, y1: 2.10, w: CW0 }] },
+  { id: 'C1', cx: 1.43 - CX, cz: 3.75 - CZ, wx: 0.20, wz: 0.40, segs: [{ lvl: 0, y0: 0, y1: 2.35, w: CW0 }, { lvl: 1, y0: 2.55, y1: 5.15, w: [13.6, 13.9, 14.1, 14.7] }] },
+  { id: 'C2', cx: 7.66 - CX, cz: 3.65 - CZ, wx: 0.40, wz: 0.20, segs: [{ lvl: 0, y0: 0, y1: 2.35, w: CW0 }] },
+  { id: 'C4', cx: 6.97 - CX, cz: 19.78 - CZ, wx: 0.20, wz: 0.30, segs: [{ lvl: 0, y0: 0, y1: 2.10, w: CW0 }] },
   { id: 'C5', cx: 12.39 - CX, cz: 19.78 - CZ, wx: 0.20, wz: 0.30, segs: [{ lvl: 0, y0: 0, y1: 2.10, w: CW0 }] },
 ];
+// muros de concreto armado de planta alta (vigas de gran peralte): la recámara 3 vuela sobre el porche del jardín y sobre la doble altura
+// sin muro ni columna abajo. MC1 (x 7.56) se apoya en C2 y vuela 4.61 m hasta y 8.26; MC2 (y 0) se apoya en el muro de PB de x 9.03 a 12.49
+// y vuela 1.47 m hasta x 7.56, donde recibe a MC1. En mundo: ax 0 corre en x (c = z), ax 1 corre en z (c = x). block.js los cuela en vez de levantar block.
+export const MUROS_CONC = [
+  { id: 'MC1', lvl: 1, ax: 1, c: 7.56 - CX, u0: 0 - CZ, u1: 8.26 - CZ },
+  { id: 'MC2', lvl: 1, ax: 0, c: 0 - CZ, u0: 7.56 - CX, u1: 12.49 - CX },
+];
+
+// trabes planas automáticas: bajo cada muro de block de planta alta (base 2.80 o 5.60) las partes sin muro debajo llevan una TP dentro de la losa
+{
+  const near = (a, b) => a.ax === b.ax && Math.abs(a.c - b.c) <= 0.15;
+  const cubre = (ivs, lo, hi) => ivs.reduce((n, [a, b]) => n + Math.max(0, Math.min(b, hi) - Math.max(a, lo)), 0);
+  let k = 0;
+  for (const w of WALLS) {
+    const lvl = Math.abs(w.base - 2.80) < 0.01 ? 1 : Math.abs(w.base - 5.60) < 0.01 ? 2 : 0;
+    if (!lvl || !w.bl || w.h <= 1.5) continue;
+    if (MUROS_CONC.some((m) => m.ax === w.ax && Math.abs(m.c - w.c) < 0.02)) continue;
+    const abajo = WALLS.filter((v) => v !== w && near(v, w) && (lvl === 1 ? v.base < 0.01 && v.base + v.h >= 2.5 : (Math.abs(v.base - 2.80) < 0.01 && v.h >= 2.4) || (v.base < 0.01 && v.base + v.h >= 5.3)));
+    let libres = [[w.lo, w.hi]];
+    for (const v of abajo) libres = libres.flatMap(([a, b]) => (v.hi <= a || v.lo >= b ? [[a, b]] : [[a, Math.min(b, v.lo)], [Math.max(a, v.hi), b]].filter(([x, y]) => y > x)));
+    for (const [a, b] of libres) {
+      if (b - a < 0.5) continue;
+      const ya = lvl === 1 ? 2.55 : 5.35, yb = lvl === 1 ? 2.80 : 5.60;
+      const ex = TRABES.filter((t) => t.ax === w.ax && Math.abs(t.c - w.c) <= 0.25);
+      if (cubre(ex.map((t) => [t.u0, t.u1]), a, b) >= 0.8 * (b - a)) continue;
+      TRABES.push({ id: 'TPa-' + ++k, kind: 'TP', ax: w.ax, c: w.c, u0: Math.max(w.lo, a - 0.15), u1: Math.min(w.hi, b + 0.15), y0: ya, y1: yb, w: 0.30, lvl });
+    }
+  }
+}
 
 
 // ================================================================ cimentación (cimRuns)
@@ -398,15 +428,16 @@ export function runW(run, x, z) {
   const t = Math.max(0, Math.min(1, ((u - w.u0) * w.dir) / w.len));
   return w.base + w.d * t;
 }
-const WID = { carga: { pl: 1.0, za: 0.9, co: 0.2 }, int: { pl: 0.8, za: 0.7, co: 0.2 }, barda: { pl: 0.6, za: 0.5, co: 0.15 }, pil: { pl: 0.9, za: 0.8, co: 0.3 } };
+const WID = { carga: { pl: 1.0, za: 0.9, co: 0.2 }, int: { pl: 0.8, za: 0.7, co: 0.2 }, barda: { pl: 0.6, za: 0.5, co: 0.15 }, pil: { pl: 0.9, za: 0.8, co: 0.3 }, col: { pl: 1.3, za: 1.2, co: 0.4 } };   // col: medidas base 1.20 (C2 lleva 1.50, ver cimRuns)
 const YRG = {
   carga: { pl: [-1.06, -0.995], za: [-1.0, -0.8], co: [-0.81, -0.04] }, int: null,
   barda: { pl: [-0.66, -0.595], za: [-0.60, -0.45], co: [-0.46, -0.02] },
   pil: { pl: [-1.06, -0.995], za: [-1.0, -0.75], co: [-0.76, -0.04] },
+  col: { pl: [-1.26, -1.195], za: [-1.20, -0.90], co: [-0.91, -0.04] },   // zapata aislada bajo columna: más honda que las corridas
 };
 YRG.int = YRG.carga;
-const YFONDO = { carga: -1.05, int: -1.05, barda: -0.65, pil: -1.05 };
-const RANK = { carga: 3, int: 2, barda: 1, pil: 0 };
+const YFONDO = { carga: -1.05, int: -1.05, barda: -0.65, pil: -1.05, col: -1.25 };
+const RANK = { carga: 3, int: 2, barda: 1, pil: 0, col: 4 };
 const OFFL = { pl: 0.010, za: 0.005, co: 0 };       // lo que sobresale la pieza del paño exterior en un lindero (escalonado: nada en el mismo plano)
 const FREE = { pl: 0.35, za: 0.30, co: 0.10 };      // extremo libre
 const PIECES = ['pl', 'za', 'co'];
@@ -451,7 +482,17 @@ export function cimRuns() {
     g.ivs.sort((p, q) => p[0] - q[0]);
     const m = [];
     for (const iv of g.ivs) { const l = m[m.length - 1]; if (l && iv[0] <= l[1] + 0.05) l[1] = Math.max(l[1], iv[1]); else m.push([...iv]); }
-    for (const [lo, hi] of m) runs.push({ ax: g.ax, c: g.c, t: g.t, tipo: hi - lo < 0.40 ? 'pil' : g.tipo, lo, hi });
+    for (const [lo, hi] of m) {
+      // una barda con muro de planta alta encima (mismo eje, ±0.15, traslape ≥ 50 %) carga: zapata de lindero de carga
+      const carga = g.tipo === 'barda' && hi - lo >= 0.40 && WALLS.some((w) => Math.abs(w.base - 2.80) < 0.01 && w.ax === g.ax && Math.abs(w.c - g.c) <= 0.15 && Math.min(w.hi, hi) - Math.max(w.lo, lo) >= 0.5 * (hi - lo));
+      runs.push({ ax: g.ax, c: g.c, t: g.t, tipo: hi - lo < 0.40 ? 'pil' : carga ? 'carga' : g.tipo, lo, hi });
+    }
+  }
+  // fusiona corridas del mismo tipo, eje y línea que se tocan (la barda que pasó a carga se une a la carga contigua)
+  for (let i = 0; i < runs.length; i++) for (let j = 0; j < runs.length; j++) {
+    const a = runs[i], b = runs[j];
+    if (i === j || a.tipo === 'pil' || a.tipo !== b.tipo || a.ax !== b.ax || Math.abs(a.c - b.c) > 0.011 || Math.abs(a.hi - b.lo) > 0.05) continue;
+    a.hi = b.hi; a.t = Math.max(a.t, b.t); runs.splice(j, 1); i = -1; break;
   }
   for (const r of runs) {
     r.lind = 0;
@@ -461,10 +502,27 @@ export function cimRuns() {
     r.dy = 0.002 * (3 - RANK[r.tipo]) + (r.ax === 1 ? 0.001 : 0);   // las coronas de corridas que se cruzan difieren unos milímetros: ninguna cara comparte plano
     for (const p of PIECES) r.sp[p] = spanOf(r, p);
   }
+  // 1b. zapatas aisladas bajo las columnas que arrancan en el nivel 0: cuadradas, nunca se descartan, ganan en los cruces.
+  // pegadas al lindero se recorren hacia adentro (excéntricas): cada pieza deja su canto en el paño exterior del lindero + OFFL (los muros de lindero están centrados en la línea, así que el paño es L + t/2); el dado queda bajo la columna
+  const lim = (axis, sg) => (axis === 0 ? CX : CZ) + Math.max(0, ...runs.filter((r) => r.lind === sg && r.ax === (axis === 0 ? 1 : 0)).map((r) => r.t / 2));
+  for (const c of COLS) {
+    if (!c.segs.some((g) => g.lvl === 0)) continue;
+    const Z = c.id === 'C2' ? 1.5 : 1.2, size = { pl: Z + 0.10, za: Z, co: 0.40 };
+    const R = { ax: 0, c: c.cz, t: Math.max(c.wx, c.wz), tipo: 'col', lo: c.cx - c.wx / 2, hi: c.cx + c.wx / 2, lind: 0, lindX: 0, id: c.id, Y: YRG.col, sp: {}, iv: {}, ext: {}, dy: 0 };
+    for (const pc of PIECES) {
+      const w = size[pc], o = OFFL[pc];
+      const mx = Math.max(-lim(0, -1) - o + w / 2, Math.min(lim(0, 1) + o - w / 2, c.cx)), mz = Math.max(-lim(1, -1) - o + w / 2, Math.min(lim(1, 1) + o - w / 2, c.cz));
+      R.sp[pc] = [mz - w / 2, mz + w / 2]; R.iv[pc] = [[mx - w / 2, mx + w / 2]]; R.ext[pc] = [mx - w / 2, mx + w / 2];
+    }
+    const [q0, q1] = R.sp.za, [u0, u1] = R.ext.za;
+    R.lind = q1 > CZ ? 1 : q0 < -CZ ? -1 : 0; R.lindX = u1 > CX ? 1 : u0 < -CX ? -1 : 0;   // canto más allá de la línea del lote = pegada al lindero
+    runs.push(R);
+  }
   // 2. extremos: llegan a las corridas perpendiculares (esquinas llenas); libres, se alargan
   const arrives = (R, P, u) => P.ax !== R.ax && Math.abs(P.c - u) <= 0.15 && R.c >= P.lo - 0.05 && R.c <= P.hi + 0.05;
   const onLind = (R, u) => Math.abs(Math.abs(u) - (R.ax === 0 ? CX : CZ)) < 0.01;
   for (const R of runs) for (const p of PIECES) {
+    if (R.tipo === 'col') continue;
     if (R.tipo === 'pil') { const m = (R.lo + R.hi) / 2, w = WID.pil[p]; R.iv[p] = [[m - w / 2, m + w / 2]]; R.ext[p] = [m - w / 2, m + w / 2]; continue; }
     let lo = R.lo, hi = R.hi;
     for (const [end, sgn] of [['lo', -1], ['hi', 1]]) {
@@ -496,14 +554,21 @@ export function cimRuns() {
       }
     }
   }
+  // restos fuera del lote (lo que sobra al recortar una corrida que pasaba del lindero) no se construyen
+  for (const R of live) if (R.tipo !== 'col') for (const pc of PIECES) R.iv[pc] = R.iv[pc].filter(([a, b]) => b > -(R.ax === 0 ? CX : CZ) - 0.02 && a < (R.ax === 0 ? CX : CZ) + 0.02);
   // 5. semanas y cepas
   for (const R of live) {
     const pa = R.ax === 0 ? [R.lo, R.c] : [R.c, R.lo], pb = R.ax === 0 ? [R.hi, R.c] : [R.c, R.hi];
     let f0 = Fhat(...pa), f1 = Fhat(...pb), u0 = R.lo, dir = 1;
     if (f1 < f0) { [f0, f1] = [f1, f0]; u0 = R.hi; dir = -1; }
     const len = Math.max(0.01, R.hi - R.lo);
-    R.Wd = { base: 1.2 * f0, d: R.tipo === 'pil' ? 0 : Math.max(0, Math.min(0.9, Math.max(1.2 * (f1 - f0), 0.04 * len))), u0, dir, len };
+    R.Wd = { base: 1.2 * f0, d: R.tipo === 'pil' || R.tipo === 'col' ? 0 : Math.max(0, Math.min(0.9, Math.max(1.2 * (f1 - f0), 0.04 * len))), u0, dir, len };
     const s = R.sp.za, [e0, e1] = R.ext.za;
+    if (R.tipo === 'col') {   // zapata ± 0.30; del lado del lindero, 0.03
+      const [x0, x1] = R.ext.za, [z0, z1] = s, fx = (v, sg, l) => (l === sg ? v + sg * 0.03 : v + sg * 0.30);
+      R.cepa = [fx(x0, -1, R.lindX), fx(z0, -1, R.lind), fx(x1, 1, R.lindX), fx(z1, 1, R.lind)]; R.yFondo = YFONDO.col;
+      continue;
+    }
     let cs;
     if (R.tipo === 'pil') { const s2 = R.sp.pl; cs = R.lind ? (R.lind > 0 ? [s2[0] - 0.30, s2[1] + 0.03] : [s2[0] - 0.03, s2[1] + 0.30]) : [R.c - 0.6, R.c + 0.6]; }
     else cs = R.lind ? (R.lind > 0 ? [s[0] - 0.30, s[1] + 0.03] : [s[0] - 0.03, s[1] + 0.30]) : [s[0] - 0.30, s[1] + 0.30];
@@ -512,24 +577,57 @@ export function cimRuns() {
     R.yFondo = YFONDO[R.tipo];
   }
   // 6. puntos de anclaje de castillos: extremos y cruces de corridas
-  const pts = [], add = (x, z) => { if (!pts.some((q) => Math.hypot(q[0] - x, q[1] - z) < 0.35)) pts.push([x, z]); };
+  const pts = [], add = (x, z, y0) => { if (!pts.some((q) => Math.hypot(q[0] - x, q[1] - z) < 0.35)) pts.push([x, z, y0]); };
+  for (const R of live) if (R.tipo === 'col') add((R.lo + R.hi) / 2, R.c, R.Y.za[0] + 0.05);   // centro de la columna (primero: gana a los castillos cercanos)
   for (const R of live) {
+    if (R.tipo === 'col') continue;
     if (R.tipo === 'pil') { const m = (R.lo + R.hi) / 2; if (R.ax === 0) add(m, R.c); else add(R.c, m); continue; }
     if (R.ax === 0) { add(R.lo, R.c); add(R.hi, R.c); } else { add(R.c, R.lo); add(R.c, R.hi); }
   }
-  for (const R of live) if (R.ax === 0 && R.tipo !== 'pil') for (const P of live) if (P.ax === 1 && P.tipo !== 'pil' && P.c >= R.lo - 0.05 && P.c <= R.hi + 0.05 && R.c >= P.lo - 0.05 && R.c <= P.hi + 0.05) add(P.c, R.c);
+  for (const R of live) if (R.ax === 0 && R.tipo !== 'pil' && R.tipo !== 'col') for (const P of live) if (P.ax === 1 && P.tipo !== 'pil' && P.tipo !== 'col' && P.c >= R.lo - 0.05 && P.c <= R.hi + 0.05 && R.c >= P.lo - 0.05 && R.c <= P.hi + 0.05) add(P.c, R.c);
   RUNS = runs; RUNS.anchors = pts;
   return RUNS;
 }
 
-// partes de obra que index.html no tiene (cimentación, firme, puerta pivotante, acabado de la terraza y agua del jacuzzi)
+// cisterna de 5,000 L bajo la cochera (medidas en PLANO [x0, y0, x1, y1] y alturas absolutas; world.js las convierte con toW)
+// interior 1.60 x 2.00 x 1.80 (tirante máx. 1.60 = 5.12 m³); a más de 1.2 m de las zapatas (bulbo a 45°); 1.20 al norte de C5 para librar su zapata excéntrica
+export const CIS = {
+  fosa: [8.33, 15.30, 11.13, 18.50], fondoY: -2.27,        // excavación
+  dentro: [8.80, 15.77, 10.66, 18.03],                     // muros exteriores reducidos 2 cm (celdas del terreno)
+  plantilla: [8.70, 15.67, 10.76, 18.13], plantillaY: [-2.265, -2.195],
+  losa: [8.75, 15.72, 10.71, 18.08], losaY: [-2.20, -2.05],  // losa de fondo 15 cm
+  ext: [8.78, 15.75, 10.68, 18.05], int: [8.93, 15.90, 10.53, 17.90], muroY: [-2.06, -0.24],   // muros de 15 cm
+  tapa: [8.76, 15.73, 10.70, 18.07], tapaY: [-0.25, -0.102], hueco: [9.43, 17.10, 10.03, 17.70],   // losa tapa con registro
+  cuello: [9.33, 17.00, 10.13, 17.80], cuelloY: [-0.105, -0.002],   // muretes de 10 cm alrededor del hueco
+  firmeHueco: [9.32, 16.99, 10.14, 17.81],                 // hueco del firme de la cochera (1 cm fuera del cuello)
+};
+
+// partes de obra que index.html no tiene (cimentación, firme, cisterna, puerta pivotante, acabado de la terraza y agua del jacuzzi)
 function extras() {
   const out = [];
-  // firme de planta baja, 10 cm (y -0.10..0): interior, cochera y andador (los polígonos de los pisos de las líneas 605–607)
-  for (const pts of [
-    [[1.43, 3.65], [9.03, 3.65], [9.03, 0], [12.49, 0], [12.49, 13.86], [5.79, 13.86], [5.79, 18.21], [1.43, 18.21]],
-    rect(6.97, 13.86, 12.49, 19.93), rect(5.79, 13.86, 6.97, 19.93),
-  ]) out.push({ t: 'slab', outer: pts.map((q) => W2(...q)), holes: [], y: -0.10, d: 0.10, m: 'conc', k: 'firme', lvl: 0 });
+  // firme de planta baja, 10 cm (y -0.10..0): interior, cochera y andador (los polígonos de los pisos de las líneas 605–607); la cochera lleva el hueco de la cisterna
+  for (const [pts, holes] of [
+    [[[1.43, 3.65], [9.03, 3.65], [9.03, 0], [12.49, 0], [12.49, 13.86], [5.79, 13.86], [5.79, 18.21], [1.43, 18.21]], []],
+    [rect(6.97, 13.86, 12.49, 19.93), [rect(...CIS.firmeHueco)]], [rect(5.79, 13.86, 6.97, 19.93), []],
+  ]) out.push({ t: 'slab', outer: pts.map((q) => W2(...q)), holes: holes.map((h) => h.map((q) => W2(...q))), y: -0.10, d: 0.10, m: 'conc', k: 'firme', lvl: 0 });
+  // cisterna de concreto armado: fondo, muros, tapa con registro y cuello (programa en semanas: ver cisternKit en world.js)
+  {
+    const C = CIS, tt = (y, [a, b]) => Math.max(0, Math.min(1, (y - a) / (b - a)));
+    const bx = (r, [y0, y1], wk) => {
+      const [ax, az] = W2(r[0], r[1]), [bx_, bz] = W2(r[2], r[3]);
+      out.push({ t: 'box', b: [ax, y0, az, bx_, y1, bz], m: 'conc', k: 'cisterna', lvl: 0, wk });
+    };
+    bx(C.losa, C.losaY, (x, y) => 1.95 + 0.04 * tt(y, C.losaY));
+    const wm = (x, y) => 3.0 + 0.30 * tt(y, C.muroY), [e, i] = [C.ext, C.int];
+    bx([e[0], e[1], i[0], e[3]], C.muroY, wm); bx([i[2], e[1], e[2], e[3]], C.muroY, wm);   // poniente y oriente, a todo lo largo
+    bx([i[0], e[1], i[2], i[1]], C.muroY, wm); bx([i[0], i[3], i[2], e[3]], C.muroY, wm);   // norte y sur, entre ellos
+    const [t, h] = [C.tapa, C.hueco], wt = (x, y, z) => 5.60 + 0.12 * Math.max(0, Math.min(1, (z + CZ - t[1]) / (t[3] - t[1]))) + 0.03 * tt(y, C.tapaY);
+    bx([t[0], t[1], t[2], h[1]], C.tapaY, wt); bx([t[0], h[3], t[2], t[3]], C.tapaY, wt);   // franjas norte y calle
+    bx([t[0], h[1], h[0], h[3]], C.tapaY, wt); bx([h[2], h[1], t[2], h[3]], C.tapaY, wt);   // a los lados del hueco
+    const c = C.cuello;   // wk siempre es función (x, y, z)
+    bx([c[0], c[1], c[2], h[1]], C.cuelloY, () => 5.80); bx([c[0], h[3], c[2], c[3]], C.cuelloY, () => 5.80);
+    bx([c[0], h[1], h[0], h[3]], C.cuelloY, () => 5.80); bx([h[2], h[1], c[2], h[3]], C.cuelloY, () => 5.80);
+  }
   // cimentación: zapatas corridas, excéntricas de lindero, contratrabes y zapata aislada (ver cimRuns)
   for (const run of cimRuns()) {
     if (run.dropped) continue;

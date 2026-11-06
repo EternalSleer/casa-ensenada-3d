@@ -104,28 +104,37 @@ const TRAMOS = [
   // A (v 6.0–9.6, sem 4.1→6.4) cimentación: de la calle por el andador hasta el vano de la puerta principal (contratrabes, anclas, relleno, firme)
   [[6.0, 6.40, 1.62, 25.0, 6.30, -0.4, 15.5], [7.0, 6.55, 1.62, 22.4, 3.2, -0.6, 17.4], [7.9, 6.60, 1.62, 20.3, 9.6, -0.3, 16.6],
     [8.8, 6.40, 1.64, 17.6, 4.2, 0.0, 14.6], [9.6, 6.40, 1.65, 14.8, 6.0, 0.6, 10.0]],
-  // B (→15.6, sem 6.4→10.6) muros PB: entra por el vano principal cuando el muro aún no arranca; acercamiento al muro y = 11.82 mientras se pega el block; sala y cocina
+  // B (→19.0, sem 6.4→10.6) muros PB: entra por el vano principal cuando el muro aún no arranca; acercamiento al muro y = 11.82 mientras se pega el block;
+  // del vestíbulo entra al estudio por su puerta (x 5.79) a ver subir el muro de la ventana; luego sala y cocina
   [[10.5, 6.38, 1.65, 12.6, 3.5, 1.0, 7.0], [11.4, 5.70, 1.55, 10.4, 4.6, 0.8, 11.82], [12.6, 4.60, 1.45, 10.5, 3.6, 0.9, 11.82],
-    [13.4, 3.60, 1.55, 9.6, 1.43, 1.3, 7.0], [14.4, 4.40, 1.62, 6.0, 4.6, 1.9, 3.65], [15.6, 6.70, 1.62, 7.0, 9.4, 1.4, 5.2]],
-  // C (→17.6, sem 10.6→11.7) bajo la cimbra de la losa 2.80: puntales, artesa de TP-a y TP-b, cimbra de T1; sale al jardín por el vano del ventanal
-  [[16.4, 7.30, 1.62, 9.6, 7.56, 1.9, 6.0], [17.0, 5.40, 1.62, 6.6, 4.4, 2.4, 3.65], [17.6, 4.40, 1.62, 4.6, 6.5, 2.2, 3.0]],
-  // D (→20.8, sem 11.7→13.6) sube por fuera (andamio) y camina sobre la cimbra: casetón, malla, arranques de castillos PA; el colado barre del jardín a la calle
-  [[18.4, 6.20, 2.50, 1.6, 8.4, 2.6, 2.0], [19.2, 7.20, 4.25, 0.55, 9.0, 2.6, 4.6], [20.0, 8.30, 4.30, 4.4, 5.0, 2.6, 3.0], [20.8, 7.60, 4.35, 9.6, 5.0, 2.7, 14.0]],
-  // E (→25.6, sem 13.6→17.0) muros PA: desde el borde del vacío ve subir la banda alta de la sala (T1, 4 ventanas con dintel); acercamiento al muro de la recámara 2
-  [[21.8, 6.00, 4.40, 9.4, 4.0, 3.9, 3.65], [22.8, 4.60, 4.40, 9.0, 2.0, 4.0, 5.5], [23.8, 4.40, 4.40, 10.3, 3.2, 3.5, 11.80],
-    [24.6, 5.40, 4.40, 10.4, 4.6, 3.4, 11.80], [25.6, 7.80, 4.40, 10.4, 9.0, 4.2, 13.0]],
-  // F (→28.8, sem 17.0→18.6) cimbra de la 5.60: el bosque de 5.35 m de la sala desde PA, el pie de la escalera y la subida
-  [[26.4, 7.20, 4.40, 9.2, 4.2, 3.0, 6.0], [27.2, 7.80, 4.40, 10.4, 9.0, 4.40, 10.95], [27.6, 7.90, 4.40, 10.95, 11.2, 4.6, 10.95],
-    [28.0, 10.40, 5.10, 10.95, 12.0, 5.3, 10.1], [28.4, 11.85, 5.75, 10.2, 9.6, 5.9, 9.1], [28.8, 9.60, 7.15, 9.1, 6.5, 6.9, 9.7]],
-  // G (→30.4, sem 18.6→19.8) sobre el armado de la 5.60 y su colado (cruza y = 8.14 antes de que suba el muro del volumen)
-  [[29.6, 7.60, 7.20, 8.6, 5.5, 5.4, 13.0], [30.4, 5.00, 7.20, 6.6, 6.0, 5.4, 15.0]],
-  // H (→35.0, sem 19.8→24.2) terraza: muros del volumen, pretiles y subida a 10 m para ver el armado y el colado de la azotea
-  [[31.2, 4.20, 7.20, 9.0, 6.0, 6.4, 12.0], [32.2, 4.30, 7.20, 10.2, 5.67, 6.5, 11.0], [33.0, 3.00, 7.20, 6.0, 6.5, 6.6, 12.0],
-    [34.0, 3.40, 10.0, 7.8, 8.4, 7.9, 12.0], [35.0, 4.40, 10.0, 11.0, 8.6, 8.1, 12.0]],
-  // I (→41.2, sem 24.2→40) aplanado sobre el mismo muro, pérgola, jacuzzi, bajada por fuera, jardín, cocina y entrega
-  [[36.0, 3.20, 7.20, 9.0, 5.67, 6.2, 11.8], [36.8, 5.00, 7.20, 9.6, 9.0, 6.2, 5.0], [37.5, 3.90, 7.20, 8.2, 4.0, 6.2, 3.0], [38.1, 4.50, 7.25, 4.6, 4.5, 2.0, 0.5],
-    [38.7, 4.50, 5.40, 1.8, 4.6, 2.6, 6.0], [39.3, 6.00, 1.70, 1.6, 4.4, 1.5, 6.0], [39.9, 8.50, 1.70, 2.6, 9.6, 1.1, 5.4], [40.3, 8.30, 1.75, 4.15, 9.9, 0.9, 5.4],
-    [40.9, 7.25, 1.70, 4.25, 2.0, 1.5, 7.8], [41.2, 7.20, 1.70, 8.1, 2.2, 1.5, 4.2]],
+    [13.4, 6.30, 1.60, 11.3, 5.0, 1.2, 12.4], [14.0, 6.10, 1.60, 12.32, 3.0, 1.3, 14.0], [14.4, 5.30, 1.60, 12.38, 2.6, 1.3, 14.2], [14.8, 3.70, 1.60, 13.6, 1.43, 1.4, 13.4],
+    [15.6, 5.25, 1.60, 12.36, 6.6, 1.3, 12.2], [16.4, 6.45, 1.62, 12.2, 4.6, 1.3, 9.6], [16.8, 6.45, 1.62, 11.0, 3.6, 1.3, 9.0],
+    [17.2, 3.60, 1.55, 9.6, 1.43, 1.3, 7.0], [18.0, 4.40, 1.62, 6.0, 4.6, 1.9, 3.65], [19.0, 6.70, 1.62, 7.0, 9.4, 1.4, 5.2]],
+  // C (→21.0, sem 10.6→11.7) bajo la cimbra de la losa 2.80: puntales, artesa de TP-a y TP-b, cimbra de T1; sale al jardín por el vano del ventanal
+  [[19.8, 7.30, 1.62, 9.6, 7.56, 1.9, 6.0], [20.4, 5.40, 1.62, 6.6, 4.4, 2.4, 3.65], [21.0, 4.40, 1.62, 4.6, 6.5, 2.2, 3.0]],
+  // D (→24.2, sem 11.7→13.6) sube por fuera (andamio) y camina sobre la cimbra: casetón, malla, arranques de castillos PA; el colado barre del jardín a la calle
+  [[21.8, 6.20, 2.50, 1.6, 8.4, 2.6, 2.0], [22.6, 7.20, 4.25, 0.55, 9.0, 2.6, 4.6], [23.4, 8.30, 4.30, 4.4, 5.0, 2.6, 3.0], [24.2, 7.60, 4.35, 9.6, 5.0, 2.7, 14.0]],
+  // E (→38.8, sem 13.6→17.85) muros PA cuarto por cuarto, siempre por las puertas: sala TV (banda alta de la sala sobre T1), recámara 3 (muros de concreto MC1 y MC2,
+  // baño y vestidor), recámara 2 y su vestidor, pasillo, recámara principal hacia el balcón y el vestidor principal; vuelve al pasillo cuando sube la cimbra de la 5.60
+  [[25.2, 6.00, 4.40, 9.4, 4.0, 3.9, 3.65], [26.0, 7.00, 4.40, 8.9, 9.6, 3.6, 4.8], [26.7, 8.10, 4.40, 8.55, 8.6, 3.8, 5.0],
+    [27.1, 8.10, 4.40, 7.3, 9.6, 3.6, 4.0], [27.5, 9.30, 4.40, 6.0, 10.8, 3.6, 2.4], [28.3, 8.40, 4.40, 3.3, 7.9, 3.5, 0.6], [29.1, 8.10, 4.40, 8.55, 6.0, 3.8, 11.0],
+    [29.9, 5.33, 4.40, 10.9, 5.33, 3.6, 14.0], [30.6, 5.33, 4.40, 12.4, 3.2, 3.7, 15.5], [31.4, 4.70, 4.40, 13.4, 2.6, 3.6, 17.4],
+    [32.2, 3.40, 4.40, 15.0, 1.43, 4.1, 12.8], [33.0, 5.33, 4.40, 12.6, 6.2, 3.8, 12.6], [33.6, 5.33, 4.40, 10.95, 7.0, 3.8, 12.0],
+    [34.2, 6.45, 4.40, 11.25, 6.4, 3.8, 13.5], [34.8, 6.33, 4.40, 12.7, 6.33, 3.6, 16.0], [35.4, 6.33, 4.40, 14.6, 8.0, 3.6, 18.4], [36.1, 6.70, 4.40, 15.3, 9.6, 3.4, 18.5],
+    [36.8, 8.40, 4.40, 15.2, 10.8, 3.6, 14.3], [37.4, 6.40, 4.40, 14.6, 6.33, 3.8, 11.0], [38.0, 6.33, 4.40, 13.0, 6.9, 3.8, 10.0],
+    [38.8, 7.20, 4.40, 9.2, 4.2, 3.0, 6.0]],
+  // F (→41.2, sem 17.85→18.6) cimbra de la 5.60: el bosque de 5.35 m de la sala desde PA, el pie de la escalera y la subida
+  [[39.6, 7.80, 4.40, 10.4, 9.0, 4.40, 10.95], [40.0, 7.90, 4.40, 10.95, 11.2, 4.6, 10.95],
+    [40.4, 10.40, 5.10, 10.95, 12.0, 5.3, 10.1], [40.8, 11.85, 5.75, 10.2, 9.6, 5.9, 9.1], [41.2, 9.60, 7.15, 9.1, 6.5, 6.9, 9.7]],
+  // G (→42.8, sem 18.6→19.8) sobre el armado de la 5.60 y su colado (cruza y = 8.14 antes de que suba el muro del volumen)
+  [[42.0, 7.60, 7.20, 8.6, 5.5, 5.4, 13.0], [42.8, 5.00, 7.20, 6.6, 6.0, 5.4, 15.0]],
+  // H (→47.4, sem 19.8→24.2) terraza: muros del volumen, pretiles y subida a 10 m para ver el armado y el colado de la azotea
+  [[43.6, 4.20, 7.20, 9.0, 6.0, 6.4, 12.0], [44.6, 4.30, 7.20, 10.2, 5.67, 6.5, 11.0], [45.4, 3.00, 7.20, 6.0, 6.5, 6.6, 12.0],
+    [46.4, 3.40, 10.0, 7.8, 8.4, 7.9, 12.0], [47.4, 4.40, 10.0, 11.0, 8.6, 8.1, 12.0]],
+  // I (→53.6, sem 24.2→40) aplanado sobre el mismo muro, pérgola, jacuzzi, bajada por fuera, jardín, cocina y entrega
+  [[48.4, 3.20, 7.20, 9.0, 5.67, 6.2, 11.8], [49.2, 5.00, 7.20, 9.6, 9.0, 6.2, 5.0], [49.9, 3.90, 7.20, 8.2, 4.0, 6.2, 3.0], [50.5, 4.50, 7.25, 4.6, 4.5, 2.0, 0.5],
+    [51.1, 4.50, 5.40, 1.8, 4.6, 2.6, 6.0], [51.7, 6.00, 1.70, 1.6, 4.4, 1.5, 6.0], [52.3, 8.50, 1.70, 2.6, 9.6, 1.1, 5.4], [52.7, 8.30, 1.75, 4.15, 9.9, 0.9, 5.4],
+    [53.3, 7.25, 1.70, 4.25, 2.0, 1.5, 7.8], [53.6, 7.20, 1.70, 8.1, 2.2, 1.5, 4.2]],
 ];
 const LEGS = TRAMOS.map((t, i) => ({ keys: i ? [TRAMOS[i - 1][TRAMOS[i - 1].length - 1], ...t] : t }));
 for (const leg of LEGS) {
@@ -133,21 +142,25 @@ for (const leg of LEGS) {
   leg.pos = new THREE.CatmullRomCurve3(P, false, 'centripetal'); leg.look = new THREE.CatmullRomCurve3(L, false, 'centripetal');
   leg.v0 = leg.keys[0][0]; leg.v1 = leg.keys[leg.keys.length - 1][0];
 }
+LEGS[1].even = LEGS[4].even = true;   // B (planta baja con el estudio) y E (planta alta cuarto por cuarto)
 function walkAt(v) {
   const leg = LEGS.find((l) => v <= l.v1) || LEGS[LEGS.length - 1];
-  const t = clamp((v - leg.v0) / (leg.v1 - leg.v0), 0, 1), te = lerp(t, ease(t), 0.35), vv = lerp(leg.v0, leg.v1, te);
+  // el suavizado de entrada y salida es de todo el tramo: en B y E (cuarto por cuarto) casi no se aplica, para que el paso sea parejo
+  const t = clamp((v - leg.v0) / (leg.v1 - leg.v0), 0, 1), te = lerp(t, ease(t), leg.even ? 0.06 : 0.35), vv = lerp(leg.v0, leg.v1, te);
   const k = leg.keys; let i = 0; while (i < k.length - 2 && vv > k[i + 1][0]) i++;
   const u = (i + clamp((vv - k[i][0]) / (k[i + 1][0] - k[i][0]), 0, 1)) / (k.length - 1);
   return { P: leg.pos.getPoint(u), L: leg.look.getPoint(u) };
 }
-const V_END = LEGS[LEGS.length - 1].v1;   // 41.2, la entrega
+const V_END = LEGS[LEGS.length - 1].v1;   // 53.6, la entrega
 // la semana en cada punto del scroll. Al terminar la zambullida la obra va en la 4.1: las cepas siguen abiertas frente a la cámara.
 const W_DIVE = 4.1;
 const WEEK_KEYS = [
-  [6.0, W_DIVE], [7.0, 5.0], [8.8, 6.0], [9.6, 6.4], [10.5, 6.9], [11.4, 7.95], [12.6, 8.6], [13.4, 9.2], [14.4, 9.9], [15.6, 10.6],
-  [16.4, 11.0], [17.6, 11.7], [19.2, 12.4], [20.8, 13.6], [21.8, 14.2], [23.8, 15.5], [24.6, 16.1], [25.6, 17.0], [26.4, 17.6],
-  [27.2, 18.0], [28.8, 18.6], [30.4, 19.8], [31.2, 20.4], [32.2, 21.0], [33.0, 21.9], [34.0, 23.2], [35.0, 24.2], [36.0, 25.2],
-  [36.8, 26.0], [37.5, 27.0], [38.1, 28.6], [38.7, 30.0], [39.3, 32.5], [39.9, 35.0], [40.3, 36.5], [40.9, 38.8], [41.2, 40.0],
+  [6.0, W_DIVE], [7.0, 5.0], [8.8, 6.0], [9.6, 6.4], [10.5, 6.9], [11.4, 7.95], [12.6, 8.4], [13.4, 8.65], [14.0, 8.85], [14.4, 9.0], [14.8, 9.15],
+  [15.6, 9.45], [16.4, 9.75], [16.8, 9.88], [17.2, 10.0], [18.0, 10.3], [19.0, 10.6], [19.8, 11.0], [21.0, 11.7], [22.6, 12.4], [24.2, 13.6],
+  [25.2, 13.9], [26.0, 14.15], [26.7, 14.35], [27.1, 14.45], [27.5, 14.6], [28.3, 14.9], [29.1, 15.2], [29.9, 15.5], [30.6, 15.75], [31.4, 16.05],
+  [32.2, 16.3], [33.0, 16.5], [33.6, 16.65], [34.2, 16.8], [34.8, 16.95], [35.4, 17.1], [36.1, 17.3], [36.8, 17.5], [37.4, 17.6], [38.0, 17.7], [38.8, 17.85],
+  [39.6, 18.0], [41.2, 18.6], [42.8, 19.8], [43.6, 20.4], [44.6, 21.0], [45.4, 21.9], [46.4, 23.2], [47.4, 24.2], [48.4, 25.2],
+  [49.2, 26.0], [49.9, 27.0], [50.5, 28.6], [51.1, 30.0], [51.7, 32.5], [52.3, 35.0], [52.7, 36.5], [53.3, 38.8], [53.6, 40.0],
 ];
 function weekAt(v) {
   if (v <= WEEK_KEYS[0][0]) return WEEK_KEYS[0][1];
@@ -327,6 +340,8 @@ const NOTES = [
   { p: PL(3.0, -1.05, 11.82), t: '-1.05 FONDO DE CEPA', dx: -26, dy: 30 },
   { p: PL(1.43, -0.80, 6.0), t: 'ZAPATA CORRIDA 0.90 × 0.20 M', dx: -28, dy: 40, acc: true },
   { p: PL(12.49, -0.4, 9.0), t: 'CONTRATRABE 0.20 × 0.77 M', dx: 24, dy: 34 },
+  { p: PL(9.73, -2.05, 16.9), t: 'CISTERNA 5,000 L · FONDO -2.20', dx: 30, dy: 34 },
+  { p: PL(7.66, -1.0, 3.65), t: 'ZAPATA AISLADA 1.50 × 1.50 M · C2', dx: 26, dy: -34 },
   { p: PL(6.2, 0, 19.93), t: 'EJE 9 · CALLE', dx: -22, dy: 28 },
   { p: PL(4.5, 0, 0), t: 'EJE 1 · JARDÍN', dx: 24, dy: -28 },
 ];
@@ -354,6 +369,21 @@ function drawNotes(alpha) {
 }
 
 // lo que dice la letra chica en cada punto
+// cuartos de planta baja y alta (rectángulos de plano de los ZONES de index.html): el letrero dice en cuál va la cámara
+const ROOMS = [
+  [0, 'Vestíbulo', 5.82, 11.82, 9.03, 13.86], [0, 'Estudio', 1.43, 11.82, 5.82, 16.61], [0, 'Comedor', 1.43, 8.26, 5.82, 11.82],
+  [0, 'Sala', 1.43, 3.65, 7.4, 8.26], [0, 'Cocina', 7.4, 3.65, 12.6, 7.08], [0, 'Pasillo y escalera', 5.82, 8.26, 12.6, 11.82],
+  [0, 'Andador de acceso', 5.82, 13.86, 6.93, 19.93], [0, 'Cochera', 6.93, 13.86, 12.6, 19.93], [0, 'Jardín', -0.3, -0.3, 9.03, 3.65],
+  [1, 'Baño de la recámara 3', 7.56, 0, 12.49, 1.8], [1, 'Vestidor de la recámara 3', 10.25, 1.8, 12.49, 3.63], [1, 'Salita de la recámara 3', 7.56, 1.8, 10.25, 3.63],
+  [1, 'Recámara 3', 7.56, 3.63, 12.49, 8.23], [1, 'Sala TV', 1.43, 8.26, 6.6, 11.8], [1, 'Pasillo', 6.6, 8.23, 9.21, 13.84], [1, 'Pasillo', 5.79, 11.8, 6.6, 13.84],
+  [1, 'Vestidor de la recámara 2', 1.43, 16.14, 3.91, 18.21], [1, 'Recámara 2', 1.43, 11.8, 5.79, 18.21], [1, 'Baño completo', 9.21, 11.8, 12.49, 13.84],
+  [1, 'Recámara principal', 5.79, 13.84, 9.83, 18.69], [1, 'Vestidor principal', 9.83, 13.84, 12.49, 16.14], [1, 'Baño principal', 9.83, 16.14, 12.49, 19.93],
+  [1, 'Balcón', 5.79, 18.69, 9.86, 20.03],
+];
+const roomAt = (x, y, eye) => {
+  const lv = eye < 2.6 ? 0 : eye < 5.4 ? 1 : 2, r = ROOMS.find((q) => q[0] === lv && x >= q[2] && x <= q[4] && y >= q[3] && y <= q[5]);
+  return r ? ' · ' + r[1] : '';
+};
 const rowOf = (w) => { let n = PROG[0][0]; for (const [name, a] of PROG) if (w >= a) n = name; return n; };
 const fmt = (n) => n.toLocaleString('es-MX');
 function chipFor(v, week, pour, diving) {
@@ -365,13 +395,14 @@ function chipFor(v, week, pour, diving) {
     if (week >= 39.8) return 'Semana 40 &nbsp;//&nbsp; <i>Entrega</i>';
     const n = propsAt(week);
     // la planta según la altura del ojo
-    const eye = walkAt(v).P.y, floor = eye < 2.6 ? 'Planta baja' : eye < 5.4 ? 'Planta alta' : 'Terraza';
+    const P = walkAt(v).P, eye = P.y, floor = (eye < 2.6 ? 'Planta baja' : eye < 5.4 ? 'Planta alta' : 'Terraza') + roomAt(P.x + CX, P.z + CZ, eye);
     const pre = wk + (PHONE ? '' : floor + ' &nbsp;//&nbsp; ');
     const B = WORLD.blocksAt ? WORLD.blocksAt(week) : null;   // { pb: [n, N], pa: [n, N], t: [n, N] }
     const pz = (k, txt) => (B && B[k] && B[k][0] > 0 ? `${txt} · ${fmt(B[k][0])} de ${fmt(B[k][1])} piezas` : txt);
     let t;
     if (week < 4.4) t = 'Contratrabes y anclas de castillo';
     else if (week < 5.25) t = 'Relleno compactado en capas';
+    else if (week < 5.7) t = 'Cisterna de 5,000 L · armado y colado de la tapa';
     else if (week < 6.3) t = 'Firme de planta baja · 10 cm';
     else if (week < 10.6) t = pz('pb', 'Muros de block 15 × 20 × 40 · hilada por hilada');
     else if (week < 11.2) t = `Cimbra de losa N.P.T. 2.80${n ? ` · ${n} puntales` : ''}`;
@@ -394,7 +425,7 @@ function chipFor(v, week, pour, diving) {
     return pre + '<i>' + t + '</i>';
   }
   if (v > DIVE * 0.93) return 'Semana 05 &nbsp;//&nbsp; <i>Colado de contratrabes</i>';
-  if (pour > 0) { const w = clamp(Math.ceil(pour), 1, 5); return `Semana ${pad(w)} &nbsp;//&nbsp; <i>${w <= 1 ? 'Trazo y excavación' : w === 2 ? 'Excavación y plantilla' : w === 3 ? 'Armado y colado de zapatas' : 'Cimbra y colado de contratrabes'}</i>`; }
+  if (pour > 0) { const w = clamp(Math.ceil(pour), 1, 5); return `Semana ${pad(w)} &nbsp;//&nbsp; <i>${w <= 1 ? 'Trazo y excavación · fosa de la cisterna' : w === 2 ? 'Excavación y plantilla' : w === 3 ? 'Armado y colado de zapatas · muros de la cisterna' : 'Cimbra y colado de contratrabes'}</i>`; }
   if (diving) return 'Dibujo 01 &nbsp;//&nbsp; Excavación y cimentación &nbsp;//&nbsp; <i>Sem 01–05</i>';
   return '';
 }
