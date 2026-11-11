@@ -170,8 +170,10 @@ export function planObra(o) {
   const concWalls = o.conc || [];
   const samples = o.samples || [];
   const rnd = mkRnd(7);
-  const acc = { cmu: newAcc(true), cmuA: newAcc(true), conc: newAcc(), concPour: { ...newAcc(), pour: [], span: [] }, rebar: newAcc(), timber: newAcc(), ply: newAcc(), eps: newAcc(), cap: newAcc() };
+  const acc = { cmu: newAcc(true), cmuA: newAcc(true), conc: newAcc(), concPour: { ...newAcc(), pour: [], span: [] }, mort: newAcc(), rebar: newAcc(), timber: newAcc(), ply: newAcc(), eps: newAcc(), cap: newAcc() };
   const stirSp = phone ? 0.50 : 0.25;
+  const armexSp = phone ? 0.48 : 0.16;   // el armex 15x15-4 trae sus estribos electrosoldados a cada 15.8 cm
+  const DIENTE = 0.025;                  // dentado: en hiladas alternas el block entra 2.5 cm al castillo, para que el colado amarre
   const TONO_A = 0.74;   // las bardas de block aparente van en gris medio, como el concreto liso de antes
   const flatO = (b) => (b.out === 'aparente' ? { col: [TONO_A, TONO_A, TONO_A * 0.985], uv: () => [0.25, 0.5] } : undefined);   // concreto de la barda: la cara lisa del block, al ras
   const lvlOfY = (y) => (y < 2.5 ? 0 : y < 5.3 ? 1 : 2);
@@ -361,13 +363,15 @@ export function planObra(o) {
     const rx = Math.max(0.02, hx - 0.035), rz = Math.max(0.02, hz - 0.035);
     const out = c.out;
     const ya = c.yb + 0.05;
-    for (const sx of [-1, 1]) for (const sz of [-1, 1]) rod(R, 1, ya, c.top + 0.05, cx + sx * rx, cz + sz * rz, 0.0048, c.Wr, c.aparente ? c.Wk + 0.5 : out);
-    const sSp = c.col ? (phone ? 0.30 : 0.15) : stirSp;   // columnas: estribos más juntos
+    // las cuatro varillas se paran primero (suben en 0.05 semanas) y los estribos se amarran después, de abajo hacia arriba (0.12 semanas más)
+    const hA = c.top + 0.05 - ya, wRod = (x, y, z) => c.Wr + 0.05 * clamp((y - ya) / hA, 0, 1);
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) rod(R, 1, ya, c.top + 0.05, cx + sx * rx, cz + sz * rz, 0.0048, wRod, c.aparente ? c.Wk + 0.5 : out);
+    const sSp = c.col ? (phone ? 0.30 : 0.15) : armexSp;   // columnas: estribos a cada 15
     const nst = Math.max(1, Math.floor((c.top - c.yb - 0.15) / sSp) + 1);
     for (let i = 0; i < nst; i++) {
       const y = c.yb + 0.10 + i * sSp;
       if (y > c.top - 0.03) break;
-      ring(R, cx, cz, hx - 0.022, hz - 0.022, y, y + 0.006, 0.006, c.Wr, c.aparente ? c.Wk + 0.5 : out);
+      ring(R, cx, cz, hx - 0.022, hz - 0.022, y, y + 0.006, 0.006, c.Wr + 0.05 + (0.12 * i) / nst, c.aparente ? c.Wk + 0.5 : out);
     }
     if (c.lvl >= 1) {   // arranques: varillas que quedan de la losa de abajo, antes del armex completo
       const s = slabOf(c.lvl);
@@ -417,7 +421,10 @@ export function planObra(o) {
       for (const h of b.holes) if (y1 > h.ySill + E && y0 < h.yHead - E) spans = subIv(spans, h.u0, h.u1);
       for (let k = 0; k < b.castles.length; k++) {
         const c = b.castles[k];
-        if (y1 > c.yb + E && y0 < c.top - E) spans = subIv(spans, ents[k][0], ents[k][1]);
+        if (!(y1 > c.yb + E && y0 < c.top - E)) continue;
+        // dentado: una hilada sí y una no entra al castillo (las bandas en z van desfasadas de las de x, como el cuatrapeo de una esquina)
+        const d = !c.col && !c.aparente && ents[k][1] - ents[k][0] > 0.11 && (i + b.ax) % 2 === 1 ? DIENTE : 0;
+        spans = subIv(spans, ents[k][0] + d, ents[k][1] - d);
       }
       for (const e of cEnts) if (y1 > e.y0 + E && y0 < e.y1 - E) spans = subIv(spans, e.u0, e.u1);   // el block termina contra el concreto
       const org = b.lo - (i % 2 ? 0.20 : 0);
@@ -450,6 +457,24 @@ export function planObra(o) {
           if (o.record) o.record.push({ b, i, u0: a0, u1: a1, y0, y1, wk });
           sorted[b.lvl].push(wk); counts[b.lvl]++;
           if (wk < first) first = wk; if (wk > last) last = wk;
+        }
+      }
+      // mortero: dos cordones de 3 cm sobre las paredes del block de abajo (así se asienta el block hueco), que corren un poco adelante de la hilada;
+      // y escalerilla: refuerzo horizontal de alambre cada dos hiladas, con travesaño a cada 40 cm. Los dos quedan dentro de la hilada siguiente.
+      if (!phone) {
+        const rw = (ii) => (x, y, z) => b.Ws + (b.D * (ii + 0.85 * (b.L >= 1 ? Math.abs((b.ax === 0 ? x : z) - b.uS) / b.L : 0))) / b.n;
+        const bxa = (AA, ua, ub, ya, yb2, qa, qb, wk, out, skip) => (b.ax === 0 ? box(AA, ua, ya, qa, ub, yb2, qb, wk, out, { skip }) : box(AA, qa, ya, ua, qb, yb2, ub, wk, out, { skip }));
+        const ends = b.ax === 0 ? 3 : 48, sides = b.ax === 0 ? 48 : 3;
+        const inner1 = b.ax === 0 ? 16 : 1, inner0 = b.ax === 0 ? 32 : 2;   // cara que mira al centro del muro: +q en el cordón de q0, -q en el de q1
+        const r0 = rw(i), r1 = rw(i + 1), wM = (x, y, z) => r0(x, y, z) - 0.012, oM = (x, y, z) => r0(x, y, z) + 0.25;
+        const wE = (x, y, z) => r0(x, y, z) + 0.03, oE = (x, y, z) => r1(x, y, z) + 0.06;
+        const esc = i % 2 === 1 && i < b.n - 1;
+        for (const [s0, s1] of spans) {
+          if (s1 - s0 < 0.12) continue;
+          for (const [qa, qb] of [[q0 + 0.004, q0 + 0.034], [q1 - 0.034, q1 - 0.004]]) bxa(acc.mort, s0, s1, y0 - 0.001, y0 + 0.012, qa, qb, wM, oM, 8 | ends | (qa < b.c ? inner1 : inner0));   // solo la cara de arriba y la de afuera
+          if (!esc) continue;
+          for (const qc of [q0 + 0.028, q1 - 0.028]) bxa(acc.rebar, s0 + 0.02, s1 - 0.02, y1 + 0.001, y1 + 0.005, qc - 0.002, qc + 0.002, wE, oE, 8 | ends);
+          for (let u = s0 + 0.2; u < s1 - 0.05; u += 0.4) bxa(acc.rebar, u - 0.002, u + 0.002, y1 + 0.001, y1 + 0.0045, q0 + 0.03, q1 - 0.03, wE, oE, 8 | sides | ends);   // solo la cara de arriba
         }
       }
       // hilo de reventón: una caja de 2 mm a lo largo de la hilada en curso, naranja de la marca (existe mientras la hilada se levanta)
@@ -686,69 +711,173 @@ export function planObra(o) {
     }
     void slab; void xm; void zm;
   }
+  // ------------------------------------------------------------ losa reticular aligerada: 25 cm = casetón de 60 x 60 x 20 + capa de compresión de 5
+  // Orden de obra sobre la cimbra: fronteras del canto, cajas eléctricas clavadas al triplay y pasos sanitarios, casetones (enteros, medios y cuartos:
+  // se recortan contra el canto, los muros de abajo y las trabes, donde la losa queda maciza), nervaduras a cada 75 cm en los dos sentidos
+  // (2 varillas abajo, estribos a cada 30–45, 2 arriba), poliducto naranja por dentro de las nervaduras de caja a caja y al tablero, y malla 6x6-10/10.
+  // El acero y los casetones de cada losa van en acumuladores propios (rebS1.., casS1..): world.js solo los dibuja mientras esa losa se arma.
+  const PLX = 6.245, PLZ = 9.965;   // plano -> mundo (CX, CZ de casa.js)
+  const TABLERO = [7.25, 14.05];    // centro de carga: muro de la cochera junto al vestíbulo (mismas puntas de poliducto que salen del firme)
+  // salidas de luz en el plafón de cada cuarto que cubre la losa (plano)
+  const LUCES = {
+    1: [[7.4, 12.8], [3.6, 14.2], [3.6, 10.0], [10.0, 5.0], [7.4, 10.0], [9.7, 16.9], [6.38, 16.5], [2.2, 17.4], [9.9, 12.8], [10.7, 7.67], [10.7, 1.3], [11.6, 12.8]],
+    2: [[10.0, 0.9], [11.4, 2.7], [8.9, 2.7], [10.0, 5.9], [4.0, 10.0], [7.9, 11.0], [2.7, 17.2], [3.6, 14.0], [10.8, 12.8], [7.8, 16.2], [11.2, 15.0], [11.2, 18.0], [4.4, 5.9], [7.8, 19.4]],
+    3: [[8.0, 10.0], [10.7, 10.0], [6.4, 12.0], [9.0, 14.0], [11.3, 14.5]],
+  };
+  // baños de planta alta sobre la losa 2.80 (plano): [y del ramal, x donde arranca (regadera), x del WC, y de la bajada]; la bajada cae en x 12.1, sobre el tubo que dejó la cimentación
+  const BANOS = { 1: [[0.9, 8.6, 11.4, 1.0], [12.8, 9.8, 11.4, 12.8], [17.0, 10.4, 11.4, 17.0]] };
   function emitSlab(s) {
     const L = s.lvl, W = SLABW[L], pw = s.weeks, S = (z) => sOf(z);
+    const RB = (acc['rebS' + L] = newAcc()), CA = (acc['casS' + L] = newAcc());
     const y = s.y, XS = s.outer.map((q) => q[0]), ZS = s.outer.map((q) => q[1]);
     const xmin = Math.min(...XS), xmax = Math.max(...XS), zmin = Math.min(...ZS), zmax = Math.max(...ZS);
     const outP = (x, yy, z) => pw(x, yy, z) + 0.11;   // el colado sube en ~0.1 semanas (concPour en world.js) y se lo traga
-    // huellas de muros de block de abajo y arriba, y trabes del nivel
-    const walls = bands.filter((b) => b.lvl === L - 1 || b.lvl === L).map((b) => (b.ax === 0 ? [b.lo, b.c - b.bw / 2, b.hi, b.c + b.bw / 2] : [b.c - b.bw / 2, b.lo, b.c + b.bw / 2, b.hi]));
-    const bms = trabes.filter((t) => t.lvl === L || (t.kind === 'T' && L === 1)).map((t) => (t.ax === 0 ? [t.u0, t.c - t.w / 2, t.u1, t.c + t.w / 2] : [t.c - t.w / 2, t.u0, t.c + t.w / 2, t.u1]));
-    const hitR = (r, list, pad) => list.some((q) => r[0] < q[2] + pad && r[2] > q[0] - pad && r[1] < q[3] + pad && r[3] > q[1] - pad);
-    const mod = 0.75, cs = 0.60;
-    const gx0 = xmin + 0.375, gz0 = zmin + 0.375;
-    const ok = (x, z, h) => {
-      for (const [dx, dz] of [[0, 0], [-h, -h], [h, -h], [h, h], [-h, h], [-h, 0], [h, 0], [0, -h], [0, h]]) if (!onSlab(s, x + dx, z + dz)) return false;
-      return true;
+    const mod = 0.75, cs = 0.60, q = cs / 2;
+    const gx0 = xmin + 0.375, gz0 = zmin + 0.375;     // centro del primer casetón; las nervaduras pasan por xmin + 0.75 k
+    const hitR = (r, list, pad) => list.some((o) => r[0] < o[2] + pad && r[2] > o[0] - pad && r[1] < o[3] + pad && r[3] > o[1] - pad);
+    // donde la losa es maciza: sobre los muros que la cargan, en las trabes y a lo largo de los tubos
+    const OB = [];
+    for (const b of bands) if (b.lvl === L - 1 && Math.abs(b.yt - y) < 0.12) OB.push(b.ax === 0 ? [b.lo, b.c - b.bw / 2, b.hi, b.c + b.bw / 2] : [b.c - b.bw / 2, b.lo, b.c + b.bw / 2, b.hi]);
+    for (const t of trabes) if (t.lvl === L || (t.kind === 'T' && L === 1)) OB.push(t.ax === 0 ? [t.u0, t.c - t.w / 2, t.u1, t.c + t.w / 2] : [t.c - t.w / 2, t.u0, t.c + t.w / 2, t.u1]);
+    const wCas = (x, z) => W.cas[0] + W.cas[1] * (S(z) + 0.036 * (x - xmin) / (xmax - xmin));   // fila por fila hacia la calle, y dentro de la fila de poniente a oriente
+
+    // ---- pasos sanitarios de los baños de arriba: ramal de 4" a media losa, WC y regadera que asoman con tapón, y bajada junto al muro oriente
+    const pvc = acc.pvc || (acc.pvc = newAcc());
+    for (const [yb0, xa, xw, ybj] of BANOS[L] || []) {
+      // el ramal corre por el centro de una media hilera de casetones (así solo se recorta medio casetón)
+      const zr = gz0 - q / 2 + Math.round((yb0 - PLZ - (gz0 - q / 2)) / mod) * mod, x0 = xa - PLX, x1 = 12.1 - PLX, zj = ybj - PLZ, yp = y + 0.11;
+      const wk = wCas(x0, zr) - 0.04, oS = 24.6;
+      rod(pvc, 0, x0, x1, yp, zr, 0.044, wk, outP(x1, y, zr), 8);
+      if (Math.abs(zj - zr) > 0.02) rod(pvc, 2, Math.min(zr, zj), Math.max(zr, zj), x1, yp, 0.044, wk, outP(x1, y, zj), 8);
+      rod(pvc, 1, 0.30, yp + 0.04, x1, zj, 0.044, wk, oS, 8);                                     // bajada hasta el tubo de la cimentación
+      for (const [x, r] of [[xw - PLX, 0.044], [x0, 0.024]]) {
+        rod(pvc, 1, yp, y + 0.50, x, zr, r, wk, oS, 8);
+        box(pvc, x - r - 0.006, y + 0.47, zr - r - 0.006, x + r + 0.006, y + 0.505, zr + r + 0.006, wk, oS);   // tapón
+      }
+      OB.push([x0 - 0.1, zr - 0.07, x1 + 0.07, zr + 0.07], [x1 - 0.07, Math.min(zr, zj) - 0.07, x1 + 0.07, Math.max(zr, zj) + 0.07]);
+    }
+
+    // ---- casetones: cada uno son cuatro cuartos de 30 x 30; se pone entero, en medios o en cuartos según lo que quepa
+    const libre = (x0, z0, x1, z1) => {
+      for (const [px, pz] of [[x0 - 0.12, z0 - 0.12], [x1 + 0.12, z0 - 0.12], [x1 + 0.12, z1 + 0.12], [x0 - 0.12, z1 + 0.12], [(x0 + x1) / 2, (z0 + z1) / 2]]) if (!onSlab(s, px, pz)) return false;
+      return !hitR([x0, z0, x1, z1], OB, 0.03);
+    };
+    const cas = (x0, z0, x1, z1) => {
+      const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+      box(CA, x0, y + 0.005, z0, x1, y + 0.20, z1, wCas(cx, cz), outP(cx, y, cz), { skip: 8 });
     };
     for (let x = gx0; x < xmax; x += mod) for (let z = gz0; z < zmax; z += mod) {
-      if (!ok(x, z, cs / 2 + 0.30)) continue;
-      const r = [x - cs / 2, z - cs / 2, x + cs / 2, z + cs / 2];
-      if (hitR(r, walls, 0.15) || hitR(r, bms, 0.20)) continue;
-      const wk = W.cas[0] + W.cas[1] * S(z);
-      box(acc.eps, r[0], y + 0.005, r[1], r[2], y + 0.20, r[3], wk, (xx, yy, zz) => outP(x, y, z), { skip: 8 });
+      const f = [[libre(x - q, z - q, x, z), libre(x, z - q, x + q, z)], [libre(x - q, z, x, z + q), libre(x, z, x + q, z + q)]];   // f[fila en z][columna en x]
+      if (f[0][0] && f[0][1] && f[1][0] && f[1][1]) { cas(x - q, z - q, x + q, z + q); continue; }
+      for (let r = 0; r < 2; r++) {
+        const z0 = z - q + r * q;
+        if (f[r][0] && f[r][1]) cas(x - q, z0, x + q, z0 + q);
+        else for (let c = 0; c < 2; c++) if (f[r][c]) cas(x - q + c * q, z0, x - q + c * q + q, z0 + q);
+      }
     }
-    // nervaduras: en el eje entre casetones, 2 varillas abajo y 2 arriba, recortadas a la losa
-    const rr = 0.04, rad = 0.0048;
+
+    // ---- nervaduras: en el eje entre casetones. 2 varillas abajo, estribos y 2 arriba (en ese orden), recortadas a la losa
+    const rr = 0.04, rad = 0.0048, hq = 0.047, ya = y + 0.028, yb = y + 0.222;
     const ribs = (ax) => {
-      const g0 = (ax === 0 ? gz0 : gx0) + mod / 2, g1 = ax === 0 ? zmax : xmax;
+      const g0 = (ax === 0 ? gz0 : gx0) + mod / 2, g1 = ax === 0 ? zmax : xmax, u00 = (ax === 0 ? xmin : zmin) + 0.075;
       for (let c = g0; c < g1; c += mod) {
         for (const [a, b] of slabSpans(s, ax, c)) {
           if (b - a < 0.2) continue;
-          const wk = W.var[0] + W.var[1] * S(ax === 0 ? c : (a + b) / 2), out = outP(ax === 0 ? (a + b) / 2 : c, y, ax === 0 ? c : (a + b) / 2);
-          for (const dq of [-rr, rr]) for (const yy of [y + 0.035, y + 0.215]) {
-            if (ax === 0) rod(acc.rebar, 0, a + 0.05, b - 0.05, yy, c + dq, rad, wk, out); else rod(acc.rebar, 2, a + 0.05, b - 0.05, c + dq, yy, rad, wk, out);
+          const mid = (a + b) / 2, wk = W.var[0] + W.var[1] * S(ax === 0 ? c : mid), out = outP(ax === 0 ? mid : c, y, ax === 0 ? c : mid);
+          for (const dq of [-rr, rr]) for (const [yy, dw] of [[y + 0.035, 0], [y + 0.215, 0.12]]) {
+            if (ax === 0) rod(RB, 0, a + 0.05, b - 0.05, yy, c + dq, rad, wk + dw, out); else rod(RB, 2, a + 0.05, b - 0.05, c + dq, yy, rad, wk + dw, out);
+          }
+          if (phone) continue;
+          // estribos: dos por módulo, lejos del cruce con la otra nervadura. Dos patas (prisma de 3 caras) y los ganchos de arriba y abajo como tiras planas
+          for (let k = Math.floor((a - u00) / mod); u00 + k * mod < b; k++) for (const du of [0.15, 0.45]) {
+            const u = u00 + k * mod + du;
+            if (u < a + 0.08 || u > b - 0.08) continue;
+            const ws = W.var[0] + W.var[1] * S(ax === 0 ? c : u) + 0.06, t = 0.003;
+            if (ax === 0) {
+              for (const sg of [-1, 1]) rod(RB, 1, ya, yb, u, c + sg * hq, 0.003, ws, out, 3);
+              box(RB, u - t, yb - 0.002, c - hq, u + t, yb + 0.004, c + hq, ws, out, { skip: 1 | 2 | 8 | 16 | 32 });
+              box(RB, u - t, ya - 0.004, c - hq, u + t, ya + 0.002, c + hq, ws, out, { skip: 1 | 2 | 4 | 16 | 32 });
+            } else {
+              for (const sg of [-1, 1]) rod(RB, 1, ya, yb, c + sg * hq, u, 0.003, ws, out, 3);
+              box(RB, c - hq, yb - 0.002, u - t, c + hq, yb + 0.004, u + t, ws, out, { skip: 1 | 2 | 8 | 16 | 32 });
+              box(RB, c - hq, ya - 0.004, u - t, c + hq, ya + 0.002, u + t, ws, out, { skip: 1 | 2 | 4 | 16 | 32 });
+            }
           }
         }
       }
     };
     ribs(0); ribs(1);
-    // malla electrosoldada 6x6-10/10: varillas de 4 mm cada 0.15 (0.30 en celular), a 23 cm de la cara de abajo
+
+    // ---- malla electrosoldada 6x6-10/10: alambre de 4 mm cada 0.15 (0.30 en celular), a 23 cm de la cara de abajo
     const ms = phone ? 0.30 : 0.15;
     for (const ax of [0, 1]) {
       for (let c = (ax === 0 ? zmin : xmin) + ms / 2; c < (ax === 0 ? zmax : xmax); c += ms) {
         for (const [a, b] of slabSpans(s, ax, c)) {
           const wk = W.mal[0] + W.mal[1] * S(ax === 0 ? c : (a + b) / 2), mid = (a + b) / 2;
           const out = outP(ax === 0 ? mid : c, y, ax === 0 ? c : mid);
-          if (ax === 0) box(acc.rebar, a, y + 0.228, c - 0.002, b, y + 0.232, c + 0.002, wk, out, { skip: 8 | 3 }); else box(acc.rebar, c - 0.002, y + 0.228, a, c + 0.002, y + 0.232, b, wk, out, { skip: 8 | 3 });
+          if (ax === 0) box(RB, a, y + 0.228, c - 0.002, b, y + 0.232, c + 0.002, wk, out, { skip: 8 | 3 }); else box(RB, c - 0.002, y + 0.228, a, c + 0.002, y + 0.232, b, wk, out, { skip: 8 | 3 });
         }
       }
     }
-    // poliducto naranja: unas curvas entre la malla y las nervaduras
+
+    // ---- fronteras: tabla de 2.5 cm por fuera del canto de la losa y por dentro de sus huecos, de la cimbra al descimbrado del canto
+    for (const poly of [s.outer, ...s.holes]) for (let i = 0; i < poly.length; i++) {
+      const [ax0, az0] = poly[i], [bx0, bz0] = poly[(i + 1) % poly.length], len = Math.hypot(bx0 - ax0, bz0 - az0);
+      if (len < 0.2) continue;
+      const ux = (bx0 - ax0) / len, uz = (bz0 - az0) / len, mx = (ax0 + bx0) / 2, mz = (az0 + bz0) / 2;
+      const sg = onSlab(s, mx - uz * 0.05, mz + ux * 0.05) ? -1 : 1, nx = -uz * sg, nz = ux * sg;   // hacia afuera de la losa
+      const X = [ax0 + nx * 0.004, ax0 + nx * 0.029, bx0 + nx * 0.004, bx0 + nx * 0.029], Z = [az0 + nz * 0.004, az0 + nz * 0.029, bz0 + nz * 0.004, bz0 + nz * 0.029];
+      const wkF = W.cim[0] + W.cim[1] * S(mz) + 0.25;
+      box(acc.timber, Math.min(...X), y - 0.02, Math.min(...Z), Math.max(...X), y + 0.27, Math.max(...Z), wkF, pw(mx, y, mz) + 0.6);
+    }
+
+    // ---- instalación eléctrica: una caja octagonal por salida de luz, clavada al triplay en el cruce de nervaduras más cercano, y poliducto
+    // naranja de 3/4" por dentro de las nervaduras (a media altura, entre los estribos): de caja a caja hasta el tablero, y de cada caja al muro
+    // más cercano, donde baja a su apagador
     if (!phone) {
-      const r2 = mkRnd(100 + L);
-      for (let i = 0; i < 7; i++) {
-        const x = xmin + (0.15 + 0.7 * r2()) * (xmax - xmin), z0 = zmin + (0.1 + 0.4 * r2()) * (zmax - zmin), z1 = z0 + 1.5 + 2 * r2();
-        if (!onSlab(s, x, z0 + 0.3) || !onSlab(s, x, z1 - 0.3)) continue;
-        const kx = (r2() - 0.5) * 1.2, n = 8;
-        for (let k = 0; k < n; k++) {
-          const t0 = k / n, t1 = (k + 1) / n, xa = x + kx * Math.sin(t0 * Math.PI), xb = x + kx * Math.sin(t1 * Math.PI);
-          const za = z0 + (z1 - z0) * t0, zb = z0 + (z1 - z0) * t1;
-          if (!onSlab(s, xa, za) || !onSlab(s, xb, zb)) continue;
-          const wkp = W.mal[0] + W.mal[1] * S(za) + 0.02, yp = y + 0.2125, op = outP((xa + xb) / 2, y, (za + zb) / 2);   // tubo de 24 mm entre la malla y las varillas de arriba
-          rod(acc.cap, 2, za, zb, xa, yp, 0.012, wkp, op);
-          if (Math.abs(xb - xa) > 1e-4) rod(acc.cap, 0, xa, xb, yp, zb, 0.012, wkp, op);
+      const galv = acc.galv || (acc.galv = newAcc());
+      const snap = (v, v0) => v0 + Math.round((v - v0) / mod) * mod, yc = y + 0.125, rc = 0.011;
+      const node = ([px, pz]) => [snap(px - PLX, xmin), snap(pz - PLZ, zmin)];
+      const okPt = (x, z) => onSlab(s, x, z) && onSlab(s, x + 0.1, z + 0.1) && onSlab(s, x - 0.1, z - 0.1);
+      const okSeg = (a, b) => { const n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 0.25)); for (let i = 0; i <= n; i++) if (!onSlab(s, a[0] + ((b[0] - a[0]) * i) / n, a[1] + ((b[1] - a[1]) * i) / n)) return false; return true; };
+      const wD = (x, yy, z) => W.var[0] + W.var[1] * S(z) + 0.2;   // después de los estribos, antes de la malla
+      const oD = (x, yy, z) => outP(x, y, z);
+      const seg = (a, b) => {
+        if (Math.abs(a[0] - b[0]) > 1e-4) rod(acc.cap, 0, Math.min(a[0], b[0]), Math.max(a[0], b[0]), yc, a[1], rc, wD, oD, 5);
+        if (Math.abs(a[1] - b[1]) > 1e-4) rod(acc.cap, 2, Math.min(a[1], b[1]), Math.max(a[1], b[1]), a[0], yc, rc, wD, oD, 5);
+      };
+      const root = node(TABLERO), boxes = [];
+      for (const p of LUCES[L] || []) { const n = node(p); if (okPt(n[0], n[1]) && !boxes.some((o) => o[0] === n[0] && o[1] === n[1])) boxes.push(n); }
+      for (const [bx, bz] of boxes) {
+        const wk = wCas(bx, bz) - 0.05, o = outP(bx, y, bz);
+        box(galv, bx - 0.05, y + 0.004, bz - 0.05, bx + 0.05, y + 0.042, bz + 0.05, wk, o, { skip: 8 });
+        rod(acc.cap, 1, y + 0.042, yc, bx, bz, rc, wD, oD, 5);
+        // al apagador: por la nervadura hasta el muro de abajo más cercano (a lo más 4 m), y ahí baja
+        let best = null;
+        for (const b of bands) {
+          if (b.lvl !== L - 1 || Math.abs(b.yt - y) > 0.12) continue;
+          const along = b.ax === 0 ? bx : bz, across = b.ax === 0 ? bz : bx, d = Math.abs(b.c - across);
+          if (along < b.lo || along > b.hi || d < 0.3 || d > 4) continue;
+          const end = b.ax === 0 ? [bx, b.c] : [b.c, bz];
+          if ((!best || d < best.d) && okSeg([bx, bz], end)) best = { d, end };
         }
+        if (best) { seg([bx, bz], best.end); rod(acc.cap, 1, y + 0.02, yc, best.end[0], best.end[1], rc, wD, oD, 5); }
+      }
+      // de caja a caja: se conecta siempre la caja suelta más cercana a lo ya conectado, por una escuadra que no salga de la losa
+      const done = [root], left = [...boxes];
+      rod(acc.cap, 1, y + 0.02, yc, root[0], root[1], rc, wD, oD, 5);
+      while (left.length) {
+        let pick = null;
+        for (let i = 0; i < left.length; i++) for (const d of done) {
+          const dist = Math.abs(left[i][0] - d[0]) + Math.abs(left[i][1] - d[1]);
+          if (pick && dist >= pick.dist) continue;
+          const c1 = [left[i][0], d[1]], c2 = [d[0], left[i][1]];
+          const via = okSeg(d, c1) && okSeg(c1, left[i]) ? c1 : okSeg(d, c2) && okSeg(c2, left[i]) ? c2 : null;
+          if (via) pick = { i, d, via, dist };
+        }
+        if (!pick) break;
+        const b = left.splice(pick.i, 1)[0];
+        seg(pick.d, pick.via); seg(pick.via, b); done.push(b);
       }
     }
   }

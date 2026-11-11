@@ -36,7 +36,8 @@ function useSet(scene, set) {
     const s = o.userData.sets;
     if (!s) { o.visible = set === 'main'; return; }
     const m = s[set];
-    if (!m || (o.userData.hideFrom !== undefined && scene.userData.week >= o.userData.hideFrom)) o.visible = false; else { o.visible = true; o.material = m; }   // la obra gruesa se oculta cuando ya salió toda
+    const wk = scene.userData.week;   // la obra gruesa solo se dibuja entre su primera y su última semana
+    if (!m || (set === 'main' && ((o.userData.hideFrom !== undefined && wk >= o.userData.hideFrom) || (o.userData.showFrom !== undefined && wk < o.userData.showFrom)))) o.visible = false; else { o.visible = true; o.material = m; }
   });
 }
 

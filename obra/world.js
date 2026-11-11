@@ -404,7 +404,14 @@ void main() {
     .replace('#include <map_fragment>', '#include <map_fragment>\n  diffuseColor.rgb *= mix(.42, 1., smoothstep(.03, .55, uNow - vWk));')
     .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n  roughnessFactor *= mix(.45, 1., smoothstep(.05, .45, uNow - vWk));');
 };
+// drop: el block. Cada pieza se asienta (baja 4 cm sobre su cama de mortero en 0.02 semanas) y se ve húmeda y más oscura un rato, así se lee por dónde va el muro
+const WEEKLY_DROP = (s) => {
+  WEEKLY(s);
+  s.vertexShader = s.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n  transformed.y += .04 * (1. - smoothstep(0., .02, uNow - aWeek));');
+  s.fragmentShader = s.fragmentShader.replace('#include <map_fragment>', '#include <map_fragment>\n  diffuseColor.rgb *= mix(.8, 1., smoothstep(0., .22, uNow - vWk));');
+};
 export function weekly(m, o = {}) {
+  if (o.drop) { m.onBeforeCompile = WEEKLY_DROP; m.customProgramCacheKey = () => 'weekly-drop'; return m; }
   if (o.pour) { m.onBeforeCompile = WEEKLY_POUR; m.customProgramCacheKey = () => 'weekly-pour'; return m; } m.onBeforeCompile = o.wet ? WEEKLY_WET : WEEKLY; m.customProgramCacheKey = () => (o.wet ? 'weekly-wet' : 'weekly'); return m; }
 export const DEPTH_WEEKLY = weekly(new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking }));
 
@@ -484,7 +491,7 @@ export function makeMaterials(T, env) {
     water: std({ color: 0x5fb3c9, roughness: 0.08, metalness: 0.1, envMapIntensity: 0.9 }),
     concPol: std({ map: T.concFresh, color: 0xdedbd2, roughness: 0.4, envMapIntensity: 0.4 }),
   };
-  for (const k in R) weekly(R[k], { wet: k === 'conc', pour: k === 'concPour' });
+  for (const k in R) weekly(R[k], { wet: k === 'conc', pour: k === 'concPour', drop: k === 'cmu' });
   return R;
 }
 
@@ -745,19 +752,23 @@ async function buildHouse(group, R, samples, tick, phone) {
   for (const p of boxes) if (POURED.has(p.k)) pbox(OBRA.acc.concPour, p.b[0], p.b[1], p.b[2], p.b[3], p.b[4], p.b[5], (x, y, z) => p.weeks(x, p.b[1], z), 0.1, 0, { skip: 8 });
   OBRA.final = OBRA.stats();
   // la obra gruesa va en mallas propias que se ocultan cuando todo ya salió (hideFrom)
-  for (const k of ['cmu', 'cmuA', 'conc', 'concPour', 'rebar', 'timber', 'ply', 'eps', 'cap']) {
+  // rebS1.. y casS1.. son el acero y los casetones de cada losa: mallas propias que solo existen mientras esa losa se arma (showFrom..hideFrom)
+  const matOf = (k) => (k === 'cmuA' ? 'cmu' : k === 'mort' ? 'conc' : k.startsWith('rebS') ? 'rebar' : k.startsWith('casS') ? 'eps' : k);
+  for (const k of Object.keys(OBRA.acc)) {
     const A = OBRA.acc[k], g = accGeo(A); OBRA.acc[k] = null;
     if (!g) continue;
     let mx = 0; for (let i = 0; i < A.out.length; i++) { if (!(A.out[i] > 0)) { mx = Infinity; break; } if (A.out[i] > mx) mx = A.out[i]; }
-    own.push({ k: k === 'cmuA' ? 'cmu' : k, g, hideFrom: Number.isFinite(mx) ? mx + 0.01 : undefined });
+    let mn = Infinity; for (let i = 0; i < A.wk.length; i++) if (A.wk[i] < mn) mn = A.wk[i];
+    own.push({ k: matOf(k), g, hideFrom: Number.isFinite(mx) ? mx + 0.01 : undefined, showFrom: mn - 0.01 });
   }
   for (const k in real) {
     if (!R[k]) throw new Error('world.js: falta el material R.' + k);
     addMesh(group, merge(real[k]), { main: R[k], paper: null, nd: null }, { glass: k === 'glass', shadow: !NOSHADOW.has(k) });
   }
-  for (const { k, g, hideFrom } of own) {
+  for (const { k, g, hideFrom, showFrom } of own) {
     const m = addMesh(group, g, { main: R[k], paper: null, nd: null }, { shadow: !NOSHADOW.has(k) });
     if (hideFrom !== undefined) m.userData.hideFrom = hideFrom;
+    m.userData.showFrom = showFrom;
   }
   window.__obraMs = Math.round(performance.now() - tObra);
   // el dibujo, separado por jerarquía de línea
