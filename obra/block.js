@@ -55,6 +55,36 @@ function box(A, x0, y0, z0, x1, y1, z1, wk, out = 0, o) {
     }
   }
 }
+// caja de concreto que se cuela (material concPour de world.js): todos sus vértices llevan aPour = altura sobre `base`, y el shader los sube
+// del fondo a su lugar en `span` semanas a partir de wk (evaluada en la base, así toda la sección sube pareja). Se parte cada `step` metros
+// en planta para que el frente del colado y los lomos tengan vértices. o.skip como en box(); o.base = nivel desde el que sube (por omisión y0)
+export function pbox(A, x0, y0, z0, x1, y1, z1, wk, span, out = 0, o) {
+  if (x1 - x0 < 1e-5 || y1 - y0 < 1e-5 || z1 - z0 < 1e-5) return;
+  const skip = (o && o.skip) || 0, base = o && o.base !== undefined ? o.base : y0, step = (o && o.step) || 0.25;
+  const cut = (a, b) => { const n = Math.max(1, Math.round((b - a) / step)); return Array.from({ length: n + 1 }, (_, i) => a + ((b - a) * i) / n); };
+  const xs = cut(x0, x1), zs = cut(z0, z1);
+  const v = (p, n) => {
+    const uv = defUV(n, p[0], p[1], p[2]);
+    A.pos.push(p[0], p[1], p[2]); A.nor.push(n[0], n[1], n[2]); A.uv.push(uv[0], uv[1]);
+    A.wk.push(val(wk, p[0], base, p[2])); A.out.push(val(out, p[0], p[1], p[2])); A.pour.push(p[1] - base); A.span.push(span);
+  };
+  const q4 = (a, b, c, d, n) => { for (const p of [a, b, c, a, c, d]) v(p, n); };
+  for (let i = 0; i < xs.length - 1; i++) {
+    const a = xs[i], b = xs[i + 1];
+    for (let j = 0; j < zs.length - 1; j++) {
+      const c = zs[j], d = zs[j + 1];
+      if (!(skip & 4)) q4([a, y1, d], [b, y1, d], [b, y1, c], [a, y1, c], [0, 1, 0]);
+      if (!(skip & 8)) q4([a, y0, c], [b, y0, c], [b, y0, d], [a, y0, d], [0, -1, 0]);
+    }
+    if (!(skip & 16)) q4([a, y0, z1], [b, y0, z1], [b, y1, z1], [a, y1, z1], [0, 0, 1]);
+    if (!(skip & 32)) q4([b, y0, z0], [a, y0, z0], [a, y1, z0], [b, y1, z0], [0, 0, -1]);
+  }
+  for (let j = 0; j < zs.length - 1; j++) {
+    const c = zs[j], d = zs[j + 1];
+    if (!(skip & 1)) q4([x1, y0, d], [x1, y0, c], [x1, y1, c], [x1, y1, d], [1, 0, 0]);
+    if (!(skip & 2)) q4([x0, y0, c], [x0, y0, d], [x0, y1, d], [x0, y1, c], [-1, 0, 0]);
+  }
+}
 // varilla: prisma de 6 lados sin tapas, eje ax (0 x, 1 y, 2 z) de a0 a a1; (s, t) = las otras dos coordenadas en orden x, y, z
 function rod(A, ax, a0, a1, s, t, r, wk, out, ns = 4) {
   if (Math.abs(a1 - a0) < 1e-4) return;
@@ -140,7 +170,7 @@ export function planObra(o) {
   const concWalls = o.conc || [];
   const samples = o.samples || [];
   const rnd = mkRnd(7);
-  const acc = { cmu: newAcc(true), cmuA: newAcc(true), conc: newAcc(), rebar: newAcc(), timber: newAcc(), ply: newAcc(), eps: newAcc(), cap: newAcc() };
+  const acc = { cmu: newAcc(true), cmuA: newAcc(true), conc: newAcc(), concPour: { ...newAcc(), pour: [], span: [] }, rebar: newAcc(), timber: newAcc(), ply: newAcc(), eps: newAcc(), cap: newAcc() };
   const stirSp = phone ? 0.50 : 0.25;
   const TONO_A = 0.74;   // las bardas de block aparente van en gris medio, como el concreto liso de antes
   const flatO = (b) => (b.out === 'aparente' ? { col: [TONO_A, TONO_A, TONO_A * 0.985], uv: () => [0.25, 0.5] } : undefined);   // concreto de la barda: la cara lisa del block, al ras
@@ -350,7 +380,7 @@ export function planObra(o) {
     const ins = 0.002, h = c.top - c.yb;
     const wkc = (x, y, z) => c.Wk + 0.05 * clamp((y - c.yb) / h, 0, 1);
     if (c.aparente) box(acc.cmuA, c.x0 + ins, c.yb, c.z0 + ins, c.x1 - ins, c.top, c.z1 - ins, wkc, 0, { skip: 8, col: [TONO_A, TONO_A, TONO_A * 0.985], uv: () => [0.25, 0.5] });   // aplanado al ras del mismo gris
-    else box(C, c.x0 + ins, c.yb, c.z0 + ins, c.x1 - ins, c.top, c.z1 - ins, wkc, out, { skip: 8 });
+    else pbox(acc.concPour, c.x0 + ins, c.yb, c.z0 + ins, c.x1 - ins, c.top, c.z1 - ins, c.Wk, 0.06, out, { skip: 8 });   // el nivel sube dentro de la cimbra
     // cimbra de tabla (19 mm) en las caras expuestas
     const ym = (c.yb + c.top) / 2, tb = 0.019, off = 0.10;
     const topB = c.top - 0.06;
@@ -454,7 +484,11 @@ export function planObra(o) {
           const mk = (BA, x, y, z, ...r) => void 0;
           void mk;
           const bxu = (AA, ua, ub, ya, yb2, qa, qb, wk, out, o2) => (b.ax === 0 ? box(AA, ua, ya, qa, ub, yb2, qb, wk, out, o2) : box(AA, qa, ya, ua, qb, yb2, ub, wk, out, o2));
-          bxu(b.out === 'aparente' ? acc.cmuA : acc.conc, a0, a1, yd0, b.yt, b.c - hw, b.c + hw, Wkd, b.out === 'aparente' ? 0 : outD(b.ax === 0 ? um : b.c, b.yt, b.ax === 0 ? b.c : um), flatO(b));
+          if (b.out === 'aparente') bxu(acc.cmuA, a0, a1, yd0, b.yt, b.c - hw, b.c + hw, Wkd, 0, flatO(b));
+          else {
+            const oD = outD(b.ax === 0 ? um : b.c, b.yt, b.ax === 0 ? b.c : um);
+            if (b.ax === 0) pbox(acc.concPour, a0, yd0, b.c - hw, a1, b.yt, b.c + hw, Wkd, 0.06, oD); else pbox(acc.concPour, b.c - hw, yd0, a0, b.c + hw, b.yt, a1, Wkd, 0.06, oD);
+          }
           // cimbra: tabla de 19 mm en ambas caras, de 5 cm bajo la dala hasta la corona
           for (const sg of [-1, 1]) {
             const qa = sg < 0 ? b.c - b.bw / 2 - 0.001 - 0.019 : b.c + b.bw / 2 + 0.001, qb = qa + 0.019;
@@ -534,7 +568,10 @@ export function planObra(o) {
       return out;
     };
     // colado de abajo hacia arriba
-    for (const [ra, rb, ya, yb2] of rects(b.yt)) bxu(C, ra, rb, ya, yb2, q0 + 0.002, q1 - 0.002, wkP, outB, { skip: ya <= b.yb + E ? 8 : 0 });
+    for (const [ra, rb, ya, yb2] of rects(b.yt)) {   // todo el muro sube desde su base (b.yb) en 0.15 semanas
+      const o2 = { skip: ya <= b.yb + E ? 8 : 0, base: b.yb };
+      if (ax0) pbox(acc.concPour, ra, ya, q0 + 0.002, rb, yb2, q1 - 0.002, b.Wp, 0.15, outB, o2); else pbox(acc.concPour, q0 + 0.002, ya, ra, q1 - 0.002, yb2, rb, b.Wp, 0.15, outB, o2);
+    }
     // armado: malla al centro, cuerdas y bordes de huecos
     const sp = phone ? 0.40 : 0.20, rr = b.bw / 2 - 0.035;
     for (let u = lo + 0.10; u < hi - 0.05; u += sp) {
@@ -625,7 +662,10 @@ export function planObra(o) {
     // trabe peraltada: concreto (T1; T2 sale de la caja 'trabe' de casa.js), cimbra de fondo y costados y pies derechos cada metro
     const band = tr.id === 'T1';
     const lvl0 = tr.y0 < 2.5 ? 0 : 1;
-    if (band) bxu(acc.conc, tr.u0, tr.u1, tr.y0, tr.y1, tr.c - hw + 0.002, tr.c + hw - 0.002, (x, y, z) => pw(x, y, z), (x, y, z) => finPl(lvl0 === 0 ? 0 : 1)(x, y, z) + 0.02);
+    if (band) {
+      const oT = (x, y, z) => finPl(lvl0 === 0 ? 0 : 1)(x, y, z) + 0.02, wT = (x, y, z) => pw(x, y, z);
+      if (ax === 0) pbox(acc.concPour, tr.u0, tr.y0, tr.c - hw + 0.002, tr.u1, tr.y1, tr.c + hw - 0.002, wT, 0.1, oT); else pbox(acc.concPour, tr.c - hw + 0.002, tr.y0, tr.u0, tr.c + hw - 0.002, tr.y1, tr.u1, wT, 0.1, oT);
+    }
     const wc = (u) => wv.cim[0] + 0.5 * clamp((u - tr.u0) / (tr.u1 - tr.u0), 0, 1), wo = wv.cimOut;
     const ply = 0.016;
     for (let k = 0; k < nSeg; k++) {
@@ -650,7 +690,7 @@ export function planObra(o) {
     const L = s.lvl, W = SLABW[L], pw = s.weeks, S = (z) => sOf(z);
     const y = s.y, XS = s.outer.map((q) => q[0]), ZS = s.outer.map((q) => q[1]);
     const xmin = Math.min(...XS), xmax = Math.max(...XS), zmin = Math.min(...ZS), zmax = Math.max(...ZS);
-    const outP = (x, yy, z) => pw(x, yy, z) + 0.02;
+    const outP = (x, yy, z) => pw(x, yy, z) + 0.11;   // el colado sube en ~0.1 semanas (concPour en world.js) y se lo traga
     // huellas de muros de block de abajo y arriba, y trabes del nivel
     const walls = bands.filter((b) => b.lvl === L - 1 || b.lvl === L).map((b) => (b.ax === 0 ? [b.lo, b.c - b.bw / 2, b.hi, b.c + b.bw / 2] : [b.c - b.bw / 2, b.lo, b.c + b.bw / 2, b.hi]));
     const bms = trabes.filter((t) => t.lvl === L || (t.kind === 'T' && L === 1)).map((t) => (t.ax === 0 ? [t.u0, t.c - t.w / 2, t.u1, t.c + t.w / 2] : [t.c - t.w / 2, t.u0, t.c + t.w / 2, t.u1]));

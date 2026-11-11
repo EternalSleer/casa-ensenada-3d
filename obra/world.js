@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { casaParts, CIS, CX, CZ, cimRuns, Fhat, runW, rectOf, ovl, subtractIv, WALLS, TRABES, COLS, LV, MUROS_CONC } from './casa.js';
-import { planObra } from './block.js';
+import { planObra, pbox } from './block.js';
 
 export const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -250,14 +250,6 @@ export async function makeTextures(renderer, phone, step) {
     for (let y = 0; y < s; y += s / 8) { g.fillStyle = 'rgba(60,55,50,0.08)'; g.fillRect(0, y, s, 1); }
   });
   if (step) await step(0.86);
-  // Industrial heavy machinery finish: weathered ochre-yellow with panel seams & grime
-  T.machine = canvasTex(512, 1.6, (g, s) => {
-    const a = fbm(s, 6, 3);
-    ramp(g, s, (i) => clamp(0.5 + (a[i] - 0.5) * 0.35, 0, 1), [204, 142, 22], [222, 160, 30], [235, 176, 44], 8);
-    g.strokeStyle = 'rgba(40,32,18,0.28)'; g.lineWidth = 2;
-    g.strokeRect(12, 12, s - 24, s - 24);
-    g.beginPath(); g.moveTo(0, s * 0.5); g.lineTo(s, s * 0.5); g. moveTo(s * 0.5, 0); g.lineTo(s * 0.5, s); g.stroke();
-  });
   // block de concreto común gris 15 × 20 × 40: la mitad izquierda es la cara (junta de mortero a la izquierda y abajo), la derecha la cara superior con sus dos celdas huecas
   const cmu = (bump) => {
     const c = document.createElement('canvas'); c.width = 512; c.height = 256;
@@ -300,14 +292,6 @@ export async function makeTextures(renderer, phone, step) {
     }
     g.globalCompositeOperation = 'source-over';
     g.fillStyle = '#c8460e'; g.fillRect(0, 0, 128, 8); g.fillRect(0, 120, 128, 8);
-    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = MAX_ANISO; return t;
-  })();
-  // Welded wire Heras fencing mesh
-  T.wire = (() => {
-    const c = document.createElement('canvas'); c.width = 64; c.height = 128; const g = c.getContext('2d');
-    g.clearRect(0, 0, 64, 128); g.fillStyle = '#c4c7c4';
-    for (let x = 0; x < 64; x += 32) g.fillRect(x, 0, 2.5, 128);
-    for (let y = 0; y < 128; y += 16) g.fillRect(0, y, 64, 2.5);
     const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = MAX_ANISO; return t;
   })();
   return T;
@@ -403,7 +387,25 @@ const WEEKLY_WET = (s) => {
     .replace('#include <map_fragment>', '#include <map_fragment>\n  diffuseColor.rgb *= mix(.68, 1., smoothstep(0., .6, uNow - vWk));')
     .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n  roughnessFactor *= mix(.5, 1., smoothstep(0., .6, uNow - vWk));');
 };
-export function weekly(m, o = {}) { m.onBeforeCompile = o.wet ? WEEKLY_WET : WEEKLY; m.customProgramCacheKey = () => (o.wet ? 'weekly-wet' : 'weekly'); return m; }
+// pour: el colado. En firme y losas la cara de arriba es una rejilla fina (topGrid); zapatas, contratrabes, castillos, columnas, dalas, trabes y muros de concreto
+// son cajas pbox() de block.js. Cada vértice lleva aPour (cuánto sube) y aSpan (en cuántas semanas): nace en el fondo y sube a su nivel
+// detrás de un frente irregular; mientras sube lleva lomos (el concreto recién vaciado) que se aplanan al reglarlo, y se ve oscuro y brillante.
+const WEEKLY_POUR = (s) => {
+  s.uniforms.uNow = U.real;
+  s.vertexShader = s.vertexShader.replace('void main() {', 'uniform float uNow; attribute float aWeek; attribute float aOut; attribute float aPour; attribute float aSpan; varying float vWk; varying float vOt; varying vec2 vPP;\nvoid main() {\n  vWk = aWeek; vOt = aOut; vPP = position.xz;')
+    .replace('#include <begin_vertex>', `#include <begin_vertex>
+  float pk = smoothstep(0., aSpan, uNow - aWeek);
+  float lump = sin(position.x * 4.3 + position.z * 2.9) * sin(position.z * 5.1 - position.x * 3.3) + .5 * sin(position.x * 9.7 - position.z * 7.9);
+  transformed.y += -.98 * aPour * (1. - pk) + (.5 * aPour + .16 * lump * min(aPour, .25)) * 4. * pk * (1. - pk) * (1. - pk);   // se amontona un poco sobre su nivel y luego se regla`);
+  s.fragmentShader = s.fragmentShader.replace('void main() {', `uniform float uNow; varying float vWk; varying float vOt; varying vec2 vPP;
+void main() {
+  float fn = sin(vPP.x * 5.3 + sin(vPP.y * 2.1) * 1.9) * sin(vPP.y * 4.7 + sin(vPP.x * 1.7) * 1.3) * .5 + .5;
+  if (vWk + fn * .034 > uNow + 1e-4 || (vOt > .5 && uNow >= vOt)) discard;`)
+    .replace('#include <map_fragment>', '#include <map_fragment>\n  diffuseColor.rgb *= mix(.42, 1., smoothstep(.03, .55, uNow - vWk));')
+    .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n  roughnessFactor *= mix(.45, 1., smoothstep(.05, .45, uNow - vWk));');
+};
+export function weekly(m, o = {}) {
+  if (o.pour) { m.onBeforeCompile = WEEKLY_POUR; m.customProgramCacheKey = () => 'weekly-pour'; return m; } m.onBeforeCompile = o.wet ? WEEKLY_WET : WEEKLY; m.customProgramCacheKey = () => (o.wet ? 'weekly-wet' : 'weekly'); return m; }
 export const DEPTH_WEEKLY = weekly(new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking }));
 
 export function makeMaterials(T, env) {
@@ -411,6 +413,7 @@ export function makeMaterials(T, env) {
   const R = {
     concFresh: std({ map: T.concFresh, bumpMap: T.concBump, bumpScale: 0.012, roughness: 0.82 }),
     conc: std({ map: T.conc, bumpMap: T.concBump, bumpScale: 0.015, roughness: 0.78 }),
+    concPour: std({ map: T.conc, bumpMap: T.concBump, bumpScale: 0.015, roughness: 0.78 }),
     oak: std({ map: T.oak, bumpMap: T.oakBump, bumpScale: 0.008, roughness: 0.42, envMapIntensity: 0.52 }),
     floorL: std({ map: T.travertine, roughness: 0.5 }),
     plaster: std({ color: 0xf3f0ea, roughness: 0.92 }),
@@ -454,19 +457,15 @@ export function makeMaterials(T, env) {
     book4: std({ color: 0x1f1e1c, roughness: 0.6 }),
     ply: std({ color: 0xe6bd88, bumpMap: T.oakBump, bumpScale: 0.005, roughness: 0.82 }),
     prop: std({ color: 0xdba028, roughness: 0.46, metalness: 0.35, envMapIntensity: 0.45 }),
-    yellow: std({ map: T.machine, bumpMap: T.concBump, bumpScale: 0.004, roughness: 0.38, metalness: 0.22, envMapIntensity: 0.65 }),
-    dark: std({ color: 0x383b3f, roughness: 0.46, metalness: 0.42, envMapIntensity: 0.65 }),
-    rubber: std({ color: 0x2a2b2d, roughness: 0.65, metalness: 0.35, envMapIntensity: 0.45 }),
-    chrome: std({ color: 0xe6e8ea, metalness: 0.98, roughness: 0.12, envMapIntensity: 1.2 }),
-    cabGlass: new THREE.MeshBasicMaterial({ color: 0x8cb0bd, envMap: env, combine: THREE.MixOperation, reflectivity: 0.45, transparent: true, opacity: 0.34, depthWrite: false }),
-    beacon: std({ color: 0xff6d00, emissive: 0xf0500f, emissiveIntensity: 0.6, roughness: 0.2 }),
     rebar: std({ color: 0x563826, roughness: 0.7, metalness: 0.38 }),
     cmu: std({ map: T.cmu, bumpMap: T.cmuBump, bumpScale: 0.02, roughness: 0.95, envMapIntensity: 0.2, vertexColors: true }),
     eps: std({ color: 0xf1efe9, roughness: 0.96 }),
     cap: std({ color: 0xf0500f, roughness: 0.45 }),
+    // polietileno negro (barrera de vapor bajo el firme) y PVC sanitario
+    poly: std({ color: 0x0d0e10, bumpMap: T.soilBump, bumpScale: 0.06, roughness: 0.4, envMapIntensity: 0.7 }),
+    pvc: std({ color: 0xe6e0d0, roughness: 0.36, envMapIntensity: 0.4 }),
     timber: std({ map: T.oak, color: 0xc8a276, roughness: 0.85 }),
     galv: std({ color: 0xc4c6c4, metalness: 0.62, roughness: 0.42, envMapIntensity: 0.45 }),
-    wire: std({ map: T.wire, alphaTest: 0.5, side: THREE.DoubleSide, metalness: 0.6, roughness: 0.48 }),
     net: std({ map: T.net, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.65, envMapIntensity: 0.15 }),
     block: std({ map: T.conc, color: 0xa8a59e, roughness: 0.9 }),
     fill: std({ map: T.soil, color: 0xd6c3a0, bumpMap: T.soilBump, bumpScale: 0.012, roughness: 0.97, envMapIntensity: 0.12 }),
@@ -485,7 +484,7 @@ export function makeMaterials(T, env) {
     water: std({ color: 0x5fb3c9, roughness: 0.08, metalness: 0.1, envMapIntensity: 0.9 }),
     concPol: std({ map: T.concFresh, color: 0xdedbd2, roughness: 0.4, envMapIntensity: 0.4 }),
   };
-  for (const k in R) weekly(R[k], { wet: k === 'conc' });
+  for (const k in R) weekly(R[k], { wet: k === 'conc', pour: k === 'concPour' });
   return R;
 }
 
@@ -523,12 +522,14 @@ export function addMesh(group, geo, sets, o = {}) {
 const sOf = (z) => clamp((z + CZ) / 20.69, 0, 1);
 const aff = (a, b, c = 0, y0 = 0, hy = 1) => (x, y, z) => a + b * sOf(z) + c * clamp((y - y0) / hy, 0, 1);
 
+// el firme se cuela del jardín a la calle; antes pasan, en ese orden y con el mismo frente: relleno, drenaje, plástico, malla y poliducto (ver firmeKit)
+const FIRME = (x, z) => 4.75 + 1.45 * Fhat(x, z);
 // cada muro con block trae su semana de banda (block.js); sin banda, lo de siempre con las semanas nuevas
 let OBRA = null;
 function partWeeks(p) {
   if (p.wk) return p.wk;   // zapatas y contratrabes traen su semana (tramos a lo largo del eje, casa.js)
   switch (p.k) {
-    case 'firme': return (x, y, z) => 4.6 + 1.6 * Fhat(x, z);
+    case 'firme': return (x, y, z) => FIRME(x, z);
     case 'slab': return p.lvl === 1 ? aff(12.6, 1.0) : p.lvl === 2 ? aff(18.8, 1.0) : aff(23.8, 0.6);
     case 'stair': return p.st === 2 ? aff(17.3, 0, 0.3, 2.8, 2.8) : aff(13.8, 0, 0.5, 0, 2.8);
     case 'trabe': return aff(12.6, 1.0);   // T2: se cuela con la losa 2.80
@@ -635,6 +636,52 @@ function slabGeo(p) {
   const g = new THREE.ExtrudeGeometry(shapeOf(p.outer, p.holes), { depth: p.d, bevelEnabled: false });
   g.rotateX(-Math.PI / 2); g.translate(0, p.y, 0); return worldUV(g);
 }
+// un polígono ortogonal con huecos -> tiras [x0, z0, x1, z1] (bandas en x de a lo más maxW, unidas a lo largo de z)
+function orthoStrips(p, maxW) {
+  const uniq = (l) => l.sort((a, b) => a - b).filter((v, i) => !i || v - l[i - 1] > 1e-4);
+  const all = [p.outer, ...p.holes].flat();
+  let xs = uniq(all.map((q) => q[0])); const zs = uniq(all.map((q) => q[1]));
+  if (maxW) xs = xs.flatMap((x, i) => { if (!i) return [x]; const a = xs[i - 1], n = Math.ceil((x - a) / maxW - 1e-6); return Array.from({ length: n }, (_, k) => a + ((x - a) * (k + 1)) / n); });
+  const inside = (x, z) => inPoly(x, z, p.outer) && !p.holes.some((h) => inPoly(x, z, h));
+  const out = [];
+  for (let i = 0; i < xs.length - 1; i++) {
+    let cur = null;
+    for (let j = 0; j < zs.length - 1; j++) {
+      if (!inside((xs[i] + xs[i + 1]) / 2, (zs[j] + zs[j + 1]) / 2)) { cur = null; continue; }
+      if (cur) cur[3] = zs[j + 1]; else out.push(cur = [xs[i], zs[j], xs[i + 1], zs[j + 1]]);
+    }
+  }
+  return out;
+}
+// la losa sin su cara de arriba (la pone topGrid)
+function dropTop(g) {
+  const p = g.attributes.position, n = g.attributes.normal, uv = g.attributes.uv, P = [], N = [], T = [];
+  const ix = g.index, at = (i) => (ix ? ix.getX(i) : i), cnt = ix ? ix.count : p.count;
+  for (let i = 0; i < cnt; i += 3) {
+    if (n.getY(at(i)) > 0.5) continue;
+    for (let k = i; k < i + 3; k++) { const v = at(k); P.push(p.getX(v), p.getY(v), p.getZ(v)); N.push(n.getX(v), n.getY(v), n.getZ(v)); T.push(uv.getX(v), uv.getY(v)); }
+  }
+  const o = new THREE.BufferGeometry();
+  o.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); o.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3)); o.setAttribute('uv', new THREE.Float32BufferAttribute(T, 2));
+  return o;
+}
+// la cara de arriba de una losa en rejilla de `step` metros sobre líneas globales (las tiras vecinas comparten vértices); aPour = peralte que sube el colado
+function topGrid(s, step) {
+  const P = [], y = s.y + s.d;
+  const lines = (a, b) => { const l = [a]; for (let v = Math.ceil((a + 0.02) / step) * step; v < b - 0.02; v += step) l.push(v); l.push(b); return l; };
+  for (const [x0, z0, x1, z1] of orthoStrips(s, 0)) {
+    const xs = lines(x0, x1), zs = lines(z0, z1);
+    for (let i = 0; i < xs.length - 1; i++) for (let j = 0; j < zs.length - 1; j++) {
+      const a = xs[i], b = xs[i + 1], c = zs[j], d = zs[j + 1];
+      P.push(a, y, c, a, y, d, b, y, d, a, y, c, b, y, d, b, y, c);
+    }
+  }
+  const g = new THREE.BufferGeometry(), n = P.length / 3, N = new Float32Array(n * 3), T = new Float32Array(n * 2);
+  for (let i = 0; i < n; i++) { N[i * 3 + 1] = 1; T[i * 2] = P[i * 3]; T[i * 2 + 1] = P[i * 3 + 2]; }
+  g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('normal', new THREE.BufferAttribute(N, 3)); g.setAttribute('uv', new THREE.BufferAttribute(T, 2));
+  g.setAttribute('aPour', new THREE.BufferAttribute(new Float32Array(n).fill(s.d), 1)); g.setAttribute('aSpan', new THREE.BufferAttribute(new Float32Array(n).fill(0.1), 1));
+  return g;
+}
 function floorGeo(p, y) {
   const g = new THREE.ShapeGeometry(shapeOf(p.pts, p.holes));
   g.rotateX(-Math.PI / 2); g.translate(0, y, 0); return worldUV(g);
@@ -645,6 +692,7 @@ function offsetGeo(g, d) {
   return o;
 }
 const FLOOR_MAT = { conc: 'concPol' };
+const POURED = new Set(['zapata', 'contra']);
 const NOSHADOW = new Set(['glass', 'steel', 'plaster', 'oak', 'travertine', 'grass', 'concPol', 'water', 'white', 'led', 'rebar', 'eps', 'cap']);
 const DRAWN_NF = new Set(['struct', 'barda', 'trabe', 'stair', 'columna', 'zapata', 'contra', 'cisterna']);   // línea de peso completo
 const DRAWN_FR = new Set(['frame', 'dframe', 'pergola', 'fachada']);                                  // cancelería: línea fina
@@ -657,6 +705,7 @@ function accGeo(A) {
   g.setAttribute('uv', new THREE.Float32BufferAttribute(A.uv, 2)); g.setAttribute('aWeek', new THREE.Float32BufferAttribute(A.wk, 1));
   g.setAttribute('aOut', new THREE.Float32BufferAttribute(A.out, 1));
   if (A.col) g.setAttribute('color', new THREE.Float32BufferAttribute(A.col, 3));
+  if (A.pour) { g.setAttribute('aPour', new THREE.Float32BufferAttribute(A.pour, 1)); g.setAttribute('aSpan', new THREE.Float32BufferAttribute(A.span, 1)); }
   return g;
 }
 export function blocksAt(week) { return OBRA ? OBRA.blocksAt(week) : { pb: [0, 0], pa: [0, 0], t: [0, 0] }; }
@@ -673,17 +722,17 @@ async function buildHouse(group, R, samples, tick, phone) {
   for (const p of boxes) p.weeks = partWeeks(p);
   const real = {}, add = (k, g) => (real[k] || (real[k] = [])).push(g);
   const own = [];
-  const rb = boxGeos(boxes, 'real');
+  const rb = boxGeos(boxes.filter((p) => !POURED.has(p.k)), 'real');   // zapatas y contratrabes van como cajas que se cuelan (abajo)
   for (const k in rb) add(k, rb[k]);
   const paperSlabs = [];
   for (const s of slabs) {
-    const g = slabGeo(s);
+    const full = slabGeo(s), g = dropTop(full), top = topGrid(s, phone ? 0.4 : 0.2);   // la cara de arriba va aparte: es la que se ve colar
     paperSlabs.push(stamp(slabGeo(s), s.weeks, 0));
     if (s.m === 'plaster') {   // el plafón se aplana con el nivel de abajo
-      const fp = finPl(s.lvl - 1), lay = offsetGeo(g, 0.0025);
-      stamp(g, s.weeks, (x, y, z) => fp(x, y, z) + 0.02); stamp(lay, fp, 0);
-      add('conc', g); add('plaster', lay);
-    } else { stamp(g, s.weeks, 0); add('conc', g); }
+      const fp = finPl(s.lvl - 1), lay = offsetGeo(full, 0.0025), out = (x, y, z) => fp(x, y, z) + 0.02;
+      stamp(g, s.weeks, out); stamp(top, s.weeks, out); stamp(lay, fp, 0);
+      add('conc', g); add('concPour', top); add('plaster', lay);
+    } else { stamp(g, s.weeks, 0); stamp(top, s.weeks, 0); add('conc', g); add('concPour', top); }
   }
   // pisos: solo la capa de acabado (la estructura es la losa o el firme)
   for (const f of floors) {
@@ -693,9 +742,10 @@ async function buildHouse(group, R, samples, tick, phone) {
   // obra gruesa pieza por pieza, por nivel
   for (let l = 0; l < 3; l++) { OBRA.emitLevel(l); if (tick) await tick(0.05 + 0.05 * l); }
   OBRA.emitSlabs();
+  for (const p of boxes) if (POURED.has(p.k)) pbox(OBRA.acc.concPour, p.b[0], p.b[1], p.b[2], p.b[3], p.b[4], p.b[5], (x, y, z) => p.weeks(x, p.b[1], z), 0.1, 0, { skip: 8 });
   OBRA.final = OBRA.stats();
   // la obra gruesa va en mallas propias que se ocultan cuando todo ya salió (hideFrom)
-  for (const k of ['cmu', 'cmuA', 'conc', 'rebar', 'timber', 'ply', 'eps', 'cap']) {
+  for (const k of ['cmu', 'cmuA', 'conc', 'concPour', 'rebar', 'timber', 'ply', 'eps', 'cap']) {
     const A = OBRA.acc[k], g = accGeo(A); OBRA.acc[k] = null;
     if (!g) continue;
     let mx = 0; for (let i = 0; i < A.out.length; i++) { if (!(A.out[i] > 0)) { mx = Infinity; break; } if (A.out[i] > mx) mx = A.out[i]; }
@@ -845,243 +895,6 @@ function propsGeo(E, ctx) {
   return { posts, deck };
 }
 
-// High-detail 22-tonne Tracked Hydraulic Excavator (Volvo EC220 / CAT 320 architectural grade)
-function excavatorGeo(pose) {
-  const K = { yellow: [], dark: [], rubber: [], chrome: [], cabGlass: [], beacon: [] };
-  const box = (k, w, h, d, x, y, z, rz = 0, ry = 0) => {
-    const g = new THREE.BoxGeometry(w, h, d);
-    if (rz) g.rotateZ(rz);
-    if (ry) g.rotateY(ry);
-    g.translate(x, y, z);
-    worldUV(g);
-    K[k].push(g);
-    return g;
-  };
-  const cylZ = (k, r, len, x, y, z, seg = 20) => {
-    const g = new THREE.CylinderGeometry(r, r, len, seg);
-    g.rotateX(Math.PI / 2); g.translate(x, y, z); K[k].push(g);
-  };
-  const cylY = (k, r0, r1, len, x, y, z, seg = 20) => {
-    const g = new THREE.CylinderGeometry(r0, r1, len, seg);
-    g.translate(x, y + len / 2, z); K[k].push(g);
-  };
-  const seg = (k, a, b, w, h0, h1 = h0, x0 = 0, x1 = 0) => {
-    const d = b.clone().sub(a), len = d.length(), ang = Math.atan2(d.y, d.x);
-    const L = len + x0 + x1;
-    const g = new THREE.BoxGeometry(L, 1, w);
-    const p = g.attributes.position;
-    for (let i = 0; i < p.count; i++) {
-      const u = (p.getX(i) + L / 2) / L;
-      const h = h0 + (h1 - h0) * u;
-      p.setY(i, p.getY(i) * h);
-    }
-    g.computeVertexNormals();
-    g.translate((len + x1 - x0) / 2, 0, 0);
-    g.rotateZ(ang);
-    g.translate(a.x, a.y, a.z);
-    worldUV(g);
-    K[k].push(g);
-  };
-  const rod = (k, a, b, r, segs = 12) => {
-    const d = b.clone().sub(a), len = d.length();
-    const g = new THREE.CylinderGeometry(r, r, len, segs);
-    g.translate(0, len / 2, 0);
-    g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(V(0, 1, 0), d.normalize()));
-    g.translate(a.x, a.y, a.z);
-    K[k].push(g);
-  };
-
-  // 1. Heavy-duty X-frame Undercarriage & Track Assemblies
-  for (const s of [-1, 1]) {
-    const z = s * 1.28;
-    // Track belt core & rounded idler/sprocket ends
-    box('rubber', 4.05, 0.84, 0.64, 0, 0.42, z);
-    cylZ('rubber', 0.42, 0.64, -2.02, 0.42, z, 24);
-    cylZ('rubber', 0.42, 0.64, 2.02, 0.42, z, 24);
-    // Final drive planetary hub (rear) & idler hub (front)
-    cylZ('dark', 0.30, 0.68, -2.02, 0.42, z, 18);
-    cylZ('dark', 0.24, 0.66, 2.02, 0.42, z, 18);
-    // Sculpted steel track roller frame & rock guard
-    box('dark', 3.65, 0.38, 0.46, 0, 0.45, z);
-    box('yellow', 3.3, 0.16, 0.50, 0, 0.62, z);
-    box('dark', 3.1, 0.08, 0.54, 0, 0.32, z); // bottom rock guard
-    // 7 Bottom track rollers + 2 top carrier rollers
-    for (let i = -3; i <= 3; i++) cylZ('dark', 0.12, 0.68, i * 0.52, 0.15, z, 12);
-    for (const x of [-0.85, 0.85]) cylZ('dark', 0.10, 0.58, x, 0.74, z, 12);
-    // Triple-grouser steel track shoes around top, bottom, and ends
-    for (let i = 0; i < 30; i++) {
-      const tx = -2.0 + i * 0.138;
-      box('dark', 0.09, 0.045, 0.66, tx, 0.85, z);
-      box('dark', 0.03, 0.065, 0.66, tx - 0.02, 0.86, z);
-      box('dark', 0.03, 0.065, 0.66, tx + 0.02, 0.86, z);
-      box('dark', 0.09, 0.035, 0.66, tx, 0.02, z);
-    }
-    for (let a = 0; a < 8; a++) {
-      const ang = -Math.PI / 2 + (a + 0.5) / 8 * Math.PI;
-      for (const end of [-1, 1]) {
-        const ex = end * 2.02 + end * Math.cos(ang) * 0.43;
-        const ey = 0.42 + Math.sin(ang) * 0.43;
-        box('dark', 0.04, 0.09, 0.66, ex, ey, z, end * ang);
-      }
-    }
-    // Track tie-down lugs
-    box('yellow', 0.14, 0.14, 0.08, 1.55, 0.58, z + s * 0.28);
-    box('yellow', 0.14, 0.14, 0.08, -1.55, 0.58, z + s * 0.28);
-  }
-  // X-frame center carbody & heavy slewing ring
-  box('dark', 2.1, 0.34, 2.05, 0, 0.72, 0);
-  box('dark', 2.4, 0.24, 0.55, 0, 0.68, 0, 0, 0.62);
-  box('dark', 2.4, 0.24, 0.55, 0, 0.68, 0, 0, -0.62);
-  cylY('dark', 0.98, 1.02, 0.24, -0.1, 0.88, 0, 32);
-  cylY('chrome', 0.94, 0.94, 0.05, -0.1, 1.08, 0, 32);
-
-  // 2. Upper Structure (House), Counterweight, Engine Bay & Catwalks
-  // Main chassis deck & anti-slip side catwalks
-  box('dark', 3.15, 0.12, 2.58, -0.38, 1.18, 0);
-  box('dark', 2.85, 0.05, 0.22, -0.25, 1.24, -1.32); // left catwalk step
-  box('dark', 2.85, 0.05, 0.22, -0.25, 1.24, 1.32);  // right catwalk step
-  // Sculpted rear counterweight in matte dark grey with lower amber trim
-  box('dark', 0.88, 1.18, 2.54, -2.08, 1.82, 0);
-  cylZ('dark', 0.59, 2.54, -2.32, 1.82, 0, 24);
-  box('yellow', 0.92, 0.24, 2.56, -2.08, 1.36, 0);
-  cylZ('yellow', 0.24, 2.56, -2.42, 1.36, 0, 16);
-  // Counterweight recessed vents & tow cavity
-  box('rubber', 0.15, 0.36, 0.42, -2.86, 1.68, 0);
-  box('rubber', 0.12, 0.18, 1.6, -2.84, 2.18, 0);
-
-  // Right-side hydraulic & fuel tanks + engine cowling
-  box('yellow', 2.45, 0.98, 1.05, -0.35, 1.73, 0.74);
-  box('yellow', 1.55, 0.36, 0.95, -0.05, 2.02, 0.74, -0.18); // sloped front right hood
-  box('dark', 0.03, 0.72, 0.08, 0.35, 1.72, 1.27); // hydraulic oil sight glass
-  cylY('dark', 0.06, 0.06, 0.08, 0.45, 2.22, 0.85, 12); // fuel cap
-  // Center raised engine housing, cooling pack, louvers & exhaust stack
-  box('yellow', 1.82, 0.48, 1.52, -0.95, 2.38, 0.22);
-  box('dark', 0.75, 0.06, 1.05, -1.05, 2.63, 0.25); // top cooling grille
-  for (let i = 0; i < 6; i++) {
-    box('dark', 0.55, 0.04, 0.03, -0.95, 1.65 + i * 0.09, 1.27); // side intake louvers
-    box('dark', 0.55, 0.04, 0.03, -1.25, 1.65 + i * 0.09, -1.25);
-  }
-  cylY('dark', 0.11, 0.11, 0.48, -1.15, 2.62, 0.68, 14); // muffler guard
-  cylY('chrome', 0.055, 0.055, 0.68, -1.15, 2.62, 0.68, 12); // exhaust pipe
-  box('chrome', 0.14, 0.02, 0.14, -1.15, 3.31, 0.68, 0.25); // exhaust rain cap
-  // Left rear compartment behind cab
-  box('yellow', 1.15, 1.02, 0.96, -1.12, 1.75, -0.76);
-
-  // Safety handrails & mirrors on upper deck
-  for (const x of [-1.55, -0.65, 0.25]) rod('dark', V(x, 2.22, 1.22), V(x, 2.72, 1.22), 0.018, 8);
-  rod('dark', V(-1.55, 2.72, 1.22), V(0.55, 2.72, 1.22), 0.018, 8);
-  rod('dark', V(0.55, 2.72, 1.22), V(0.75, 2.15, 1.22), 0.018, 8);
-  rod('dark', V(0.82, 2.1, 1.22), V(0.82, 2.95, 1.22), 0.016, 8);
-  box('dark', 0.06, 0.26, 0.16, 0.86, 2.82, 1.26); // right mirror
-
-  // 3. Operator ROPS Cab (Left Side) with full interior detail
-  const cx = 0.35, cz = -0.76;
-  box('dark', 1.38, 0.14, 0.98, cx, 1.31, cz); // cab floor platform
-  // Interior operator seat, armrests, joysticks & monitor
-  box('dark', 0.42, 0.22, 0.44, cx - 0.08, 1.48, cz); // seat base
-  box('rubber', 0.44, 0.10, 0.46, cx - 0.05, 1.64, cz); // seat cushion
-  box('rubber', 0.10, 0.56, 0.44, cx - 0.24, 1.94, cz, 0.15); // seat backrest
-  box('rubber', 0.08, 0.18, 0.28, cx - 0.29, 2.30, cz, 0.1); // headrest
-  for (const sz of [-0.26, 0.26]) {
-    box('dark', 0.34, 0.24, 0.10, cx + 0.06, 1.56, cz + sz); // joystick console
-    rod('rubber', V(cx + 0.14, 1.68, cz + sz), V(cx + 0.20, 1.86, cz + sz), 0.018, 8);
-  }
-  rod('dark', V(cx + 0.44, 1.38, cz - 0.1), V(cx + 0.40, 1.88, cz - 0.1), 0.014, 8); // travel levers
-  rod('dark', V(cx + 0.44, 1.38, cz + 0.1), V(cx + 0.40, 1.88, cz + 0.1), 0.014, 8);
-  box('dark', 0.08, 0.22, 0.26, cx + 0.46, 1.96, cz - 0.28, -0.3, 0.35); // LCD monitor
-  // Cab ROPS structural frame pillars (slender & angled front windshield)
-  const pFL0 = V(cx + 0.66, 1.38, cz - 0.46), pFL1 = V(cx + 0.48, 3.08, cz - 0.45);
-  const pFR0 = V(cx + 0.66, 1.38, cz + 0.46), pFR1 = V(cx + 0.48, 3.08, cz + 0.45);
-  const pBL0 = V(cx - 0.64, 1.38, cz - 0.46), pBL1 = V(cx - 0.60, 3.08, cz - 0.45);
-  const pBR0 = V(cx - 0.64, 1.38, cz + 0.46), pBR1 = V(cx - 0.60, 3.08, cz + 0.45);
-  const pML0 = V(cx + 0.04, 1.38, cz - 0.46), pML1 = V(cx + 0.02, 3.08, cz - 0.45);
-  for (const [a, b] of [[pFL0, pFL1], [pFR0, pFR1], [pBL0, pBL1], [pBR0, pBR1], [pML0, pML1]]) rod('dark', a, b, 0.036, 8);
-  for (const [a, b] of [[pFL1, pBL1], [pFR1, pBR1], [pFL1, pFR1], [pBL1, pBR1]]) rod('dark', a, b, 0.038, 8);
-  // Lower cab door kick-panel & roof cap
-  box('yellow', 1.28, 0.42, 0.04, cx, 1.59, cz - 0.46);
-  box('yellow', 1.14, 0.09, 0.94, cx - 0.06, 3.12, cz);
-  cylY('beacon', 0.055, 0.065, 0.11, cx - 0.42, 3.16, cz - 0.28, 14); // amber strobe beacon
-  // Tinted reflective safety glazing
-  box('cabGlass', 0.02, 1.66, 0.88, cx + 0.57, 2.24, cz, -0.105); // angled front windshield
-  box('cabGlass', 1.18, 1.24, 0.02, cx - 0.04, 2.42, cz - 0.46); // left door & rear window
-  box('cabGlass', 1.18, 1.62, 0.02, cx - 0.04, 2.23, cz + 0.46); // right window
-  box('cabGlass', 0.02, 1.62, 0.88, cx - 0.62, 2.23, cz); // back window
-  // Cab grab handles & front work lights
-  rod('chrome', V(cx + 0.62, 1.55, cz - 0.50), V(cx + 0.53, 2.35, cz - 0.50), 0.014, 8);
-  box('chrome', 0.08, 0.08, 0.10, cx + 0.50, 3.06, cz - 0.34);
-  box('chrome', 0.08, 0.08, 0.10, cx + 0.50, 3.06, cz + 0.34);
-
-  // 4. Articulated Gooseneck Boom, Stick (Dipper Arm), Hydraulic Cylinders & 4-Bar Bucket Linkage
-  const pv = V(0.95, 1.68, 0.12), knee = V(3.25, 4.45, 0.12), tip = pose.tip, wrist = pose.wrist;
-  // Main boom lower & upper tapered box sections + side reinforcement baffle plates
-  seg('yellow', pv, knee, 0.46, 0.52, 0.72, 0.28, 0.26);
-  seg('yellow', knee, tip, 0.42, 0.68, 0.38, 0.22, 0.22);
-  seg('dark', pv.clone().lerp(knee, 0.15), knee.clone().lerp(tip, 0.15), 0.50, 0.18, 0.18, 0, 0);
-  // Hydraulic steel lines routed along top of boom
-  for (const dz of [-0.24, 0.24]) {
-    rod('dark', pv.clone().add(V(0, 0.28, dz)), knee.clone().add(V(0, 0.36, dz)), 0.016, 8);
-    rod('dark', knee.clone().add(V(0, 0.36, dz)), tip.clone().add(V(0, 0.20, dz)), 0.016, 8);
-  }
-  // Stick (dipper arm) tapered section with ear brackets
-  seg('yellow', tip, wrist, 0.34, 0.48, 0.30, 0.42, 0.18);
-  // Heavy pivot pins with chrome end caps
-  for (const [p, w] of [[pv, 0.72], [knee, 0.62], [tip, 0.58], [wrist, 0.52]]) {
-    cylZ('dark', 0.13, w, p.x, p.y, p.z, 16);
-    cylZ('chrome', 0.08, w + 0.04, p.x, p.y, p.z, 14);
-  }
-  // Twin boom lift hydraulic cylinders
-  const bmAttach = pv.clone().lerp(knee, 0.56).add(V(0.08, -0.18, 0));
-  for (const dz of [-0.28, 0.28]) {
-    const c0 = V(1.32, 1.28, 0.12 + dz), c1 = bmAttach.clone().add(V(0, 0, dz));
-    const mid = c0.clone().lerp(c1, 0.56);
-    rod('dark', c0, mid, 0.095, 14);
-    rod('chrome', mid, c1, 0.058, 14);
-    cylZ('dark', 0.11, 0.18, c0.x, c0.y, c0.z, 12);
-    cylZ('dark', 0.11, 0.18, c1.x, c1.y, c1.z, 12);
-  }
-  // Stick crowd cylinder above the boom
-  const ac0 = knee.clone().add(V(-0.15, 0.48, 0)), ac1 = tip.clone().add(V(0.18, 0.48, 0));
-  const acMid = ac0.clone().lerp(ac1, 0.58);
-  rod('dark', ac0, acMid, 0.095, 14);
-  rod('chrome', acMid, ac1, 0.058, 14);
-  // Bucket curl cylinder & 4-bar linkage (power H-link + guide link)
-  const along = wrist.clone().sub(tip).normalize(), side = V(-along.y, along.x, 0);
-  const bc0 = tip.clone().addScaledVector(along, 0.32).addScaledVector(side, 0.34);
-  const linkPin = wrist.clone().addScaledVector(along, -0.42).addScaledVector(side, 0.36);
-  const stickPin = wrist.clone().addScaledVector(along, -0.38);
-  const bcMid = bc0.clone().lerp(linkPin, 0.58);
-  rod('dark', bc0, bcMid, 0.082, 14);
-  rod('chrome', bcMid, linkPin, 0.048, 14);
-  for (const dz of [-0.16, 0.16]) {
-    rod('dark', stickPin.clone().add(V(0, 0, dz)), linkPin.clone().add(V(0, 0, dz)), 0.038, 10);
-    rod('yellow', linkPin.clone().add(V(0, 0, dz)), wrist.clone().add(V(0.18, -0.15, dz)), 0.042, 10);
-  }
-  cylZ('chrome', 0.055, 0.44, linkPin.x, linkPin.y, linkPin.z, 12);
-
-  // 5. Heavy-duty Rock & Earth Digging Bucket with Wear Plates & 5 Cast Teeth
-  const bw = 1.12, ang = pose.bucket;
-  for (let i = 0; i < 8; i++) {
-    const a0 = ang + i * 0.34, a1 = a0 + 0.36, r = 0.64;
-    const p0 = wrist.clone().add(V(Math.cos(a0) * r, Math.sin(a0) * r, 0.12));
-    const p1 = wrist.clone().add(V(Math.cos(a1) * r, Math.sin(a1) * r, 0.12));
-    seg('dark', p0, p1, bw, 0.055, 0.055);
-    if (i >= 2 && i <= 5) seg('rubber', p0, p1, bw + 0.03, 0.025, 0.025); // outer wear strips
-  }
-  for (const z of [0.12 - bw / 2, 0.12 + bw / 2]) {
-    const g = new THREE.CylinderGeometry(0.64, 0.64, 0.045, 20, 1, false, 0, 8 * 0.34 + 0.36);
-    g.rotateX(Math.PI / 2); g.rotateZ(ang + Math.PI / 2); g.translate(wrist.x, wrist.y, z); K.dark.push(g);
-  }
-  const lip = ang + 8 * 0.34 + 0.02, tp = wrist.clone().add(V(Math.cos(lip) * 0.64, Math.sin(lip) * 0.64, 0));
-  box('dark', 0.10, 0.06, bw + 0.04, tp.x, tp.y, 0.12, lip + Math.PI / 2); // cutting edge lip
-  for (let i = 0; i < 5; i++) {
-    const tz = 0.12 - 0.44 + i * 0.22;
-    box('yellow', 0.12, 0.07, 0.07, tp.x + Math.cos(lip + 1.4) * 0.04, tp.y + Math.sin(lip + 1.4) * 0.04, tz, lip + Math.PI / 2);
-    box('chrome', 0.18, 0.045, 0.06, tp.x + Math.cos(lip + 1.4) * 0.14, tp.y + Math.sin(lip + 1.4) * 0.14, tz, lip + Math.PI / 2);
-  }
-  const out = {}; for (const k in K) if (K[k].length) out[k] = merge(K[k]);
-  return out;
-}
-
 // ---------------------------------------------------------------- trees and foliage
 export const FIG_GEO = (() => {
   const g = new THREE.LatheGeometry([[0, 0], [0.12, 0], [0.14, 0.1], [0.15, 0.82], [0.19, 1.0], [0.21, 1.36], [0.19, 1.44], [0.07, 1.5], [0.07, 1.54], [0.1, 1.6], [0.1, 1.7], [0.06, 1.75], [0, 1.76]].map(([x, y]) => new THREE.Vector2(x, y)), 16);
@@ -1144,7 +957,7 @@ function foundationKit(group, R, samples, obra) {
   const runs = cimRuns().filter((r) => !r.dropped);
   const huellas = casaParts().filter((p) => p.k === 'firme').map((p) => p.outer);
   const { newAcc, box, frustum, cyl, mk } = kitTools(group);
-  const K = { pl: newAcc(), rebar: newAcc(), cap: newAcc(), ply: newAcc(), timber: newAcc(), cal: newAcc() };
+  const K = { pl: newAcc(), rebar: newAcc(), cap: newAcc(), ply: newAcc(), timber: newAcc(), cal: newAcc(), hilo: newAcc(), imp: newAcc() };
   const rc = (run, p, iv) => rectOf(run, p, iv);
   // caja en el marco de una corrida: u a lo largo del eje, q transversal
   const boxA = (A, run, u0, u1, q0, q1, y0, y1, wk, out = 0) => { if (run.ax === 0) box(A, u0, y0, q0, u1, y1, q1, wk, out); else box(A, q0, y0, u0, q1, y1, u1, wk, out); };
@@ -1266,21 +1079,28 @@ function foundationKit(group, R, samples, obra) {
     }
   }
   // ---- niveletas: dos estacas y un travesaño a 1 m de cada extremo de corrida, fuera de huella, cepas y ruta de la cámara
-  const placed = [];
+  const placed = [], nivs = new Map();
   const inCepa = (x, z, m) => runs.some((r) => x > r.cepa[0] - m && x < r.cepa[2] + m && z > r.cepa[1] - m && z < r.cepa[3] + m);
   for (const run of runs) {
     if (run.tipo === 'pil' || run.tipo === 'col') continue;
     for (const [u, sg] of [[run.lo, -1], [run.hi, 1]]) {
       const uu = u + sg * 1.0, x = run.ax === 0 ? uu : run.c, z = run.ax === 0 ? run.c : uu;
       if (huellas.some((h) => inPoly(x, z, h)) || inCepa(x, z, 0.5) || placed.some((q) => Math.hypot(q[0] - x, q[1] - z) < 1.0)) continue;
-      if (samples.some((s) => Math.hypot(s.x - x, s.z - z) < 0.6)) continue;
-      placed.push([x, z]);
+      if (samples.some((s) => s.y < 1.3 && Math.hypot(s.x - x, s.z - z) < 0.6)) continue;   // solo estorban al ojo que camina, no al que pasa por arriba
+      placed.push([x, z]); nivs.set(run, [...(nivs.get(run) || []), uu]);
       const wk = 0.05 + 0.30 * Fhat(x, z), out = 3.65 + runW(run, x, z);
       for (const dq of [-0.5, 0.5]) boxA(K.timber, run, uu - 0.025, uu + 0.025, run.c + dq - 0.025, run.c + dq + 0.025, -0.30, 0.60, wk, out);
       boxA(K.timber, run, uu - 0.0125, uu + 0.0125, run.c - 0.55, run.c + 0.55, 0.55, 0.65, wk, out);
     }
   }
-  // ---- trazo con cal: líneas de 5 cm sobre los bordes de cada cepa (se van cuando pasa la excavadora)
+  // ---- hilos de trazo (reventones): de niveleta a niveleta sobre el eje de la corrida, hasta que se excava su cepa
+  for (const [run, us] of nivs) if (us.length === 2) boxA(K.hilo, run, Math.min(...us), Math.max(...us), run.c - 0.002, run.c + 0.002, 0.652, 0.656, 0.36, 0.75 + run.Wd.base);
+  // ---- impermeabilizante asfáltico: la corona de cada contratrabe y 25 cm de sus caras, al descimbrar (capa de 4 mm por fuera del concreto)
+  for (const run of runs) {
+    const [s0, s1] = run.sp.co, top = run.Y.co[1] - run.dy;
+    for (const [a, b] of run.iv.co) if (b - a > 0.02) boxA(K.imp, run, a, b, s0 - 0.004, s1 + 0.004, top - 0.25, top + 0.004, wf(run, 3.72), 7.2);
+  }
+  // ---- trazo con cal: líneas de 5 cm sobre los bordes de cada cepa (se van cuando se excava)
   runs.forEach((run) => {
     const c = run.cepa;
     const insideOther = (x, z) => runs.some((r) => r !== run && x > r.cepa[0] + 0.02 && x < r.cepa[2] - 0.02 && z > r.cepa[1] + 0.02 && z < r.cepa[3] - 0.02);
@@ -1299,7 +1119,7 @@ function foundationKit(group, R, samples, obra) {
     }
   });
   mk(K.pl, R.blinding, false); mk(K.rebar, R.rebar, true); mk(K.cap, R.cap, false);
-  mk(K.ply, R.ply, true); mk(K.timber, R.timber, true); mk(K.cal, R.white, false);
+  mk(K.ply, R.ply, true); mk(K.timber, R.timber, true); mk(K.cal, R.white, false); mk(K.hilo, R.white, false); mk(K.imp, R.ink, false);
 }
 
 // ---------------------------------------------------------------- la cisterna por dentro: trazo, plantilla, acero, cimbra, impermeabilizante, aplanado y obra falsa de la tapa
@@ -1312,7 +1132,7 @@ function cisternKit(group, R) {
   const bx = (A, x0, y0, x1, y1, ya, yb, wk, out = 0) => box(A, x0 - CX, ya, y0 - CZ, x1 - CX, yb, y1 - CZ, wk, out);
   const rod = (A, p, q, r, wk, out) => cyl(A, [p[0] - CX, p[2], p[1] - CZ], [q[0] - CX, q[2], q[1] - CZ], r, wk, out);   // p, q: [x plano, y plano, altura]
   const lin = (a, b, s) => { const m = Math.max(1, Math.ceil((b - a) / s - 1e-9)); return Array.from({ length: m + 1 }, (_, i) => a + ((b - a) * i) / m); };   // a..b a no más de s
-  // ---- trazo con cal: líneas de 5 cm sobre el perímetro de la fosa, en tramos de ~0.4 (se van cuando pasa la excavadora)
+  // ---- trazo con cal: líneas de 5 cm sobre el perímetro de la fosa, en tramos de ~0.4 (se van cuando se excava)
   {
     const f = C.fosa, hw = 0.025;
     for (const yy of [f[1], f[3]]) {
@@ -1415,6 +1235,98 @@ function cisternKit(group, R) {
   mk(K.ink, R.ink, false); mk(K.pol, R.concPol, false); mk(K.prop, R.prop, true); mk(K.steel, R.steel, true);
 }
 
+// ---------------------------------------------------------------- bajo el firme: drenaje, plástico, malla, poliducto y fronteras
+// Lo que una cimentación lleva entre el relleno y el colado del firme, en su orden y con el frente del firme (FIRME: del jardín a la calle):
+//   1. drenaje sanitario de PVC en zanja (DREN: colector, ramales, bajadas y registros); la zanja la abre y la tapa el terreno (buildLand)
+//   2. barrera de vapor: polietileno negro en tiras de 3 m que se desenrollan sobre el relleno, con traslape de 15 cm y cinta
+//   3. malla electrosoldada 6x6-10/10 calzada 4.5 cm sobre el plástico, y poliducto naranja amarrado encima
+//   4. fronteras de madera en el borde del firme
+// Todo es solo de la obra real y sale cuando el firme lo cubre. Alturas: relleno -0.10, plástico -0.094, malla -0.05, firme 0.
+function firmeKit(group, R) {
+  const { newAcc, box, frustum, mk } = kitTools(group);
+  const K = { poly: newAcc(), tape: newAcc(), roll: newAcc(), mesh: newAcc(), calza: newAcc(), duct: newAcc(), pvc: newAcc(), reg: newAcc(), timber: newAcc(), steel: newAcc() };
+  const firmes = casaParts().filter((p) => p.k === 'firme');
+  const fOut = (x, y, z) => FIRME(x, z) + 0.11;         // sale cuando el colado ya subió y lo tapó
+
+  // ---- 2. polietileno negro: tiras de 3 m, la orilla de una monta 15 cm sobre la siguiente; el rollo va por delante y se adelgaza
+  const wPoly = (xc) => (x, y, z) => 4.36 + 1.3 * Fhat(xc, z);
+  let ns = 0;
+  for (const p of firmes) for (const [x0, z0, x1, z1] of orthoStrips(p, 3.0)) {
+    const xc = (x0 + x1) / 2, y = -0.094 + 0.004 * (ns++ % 2), w = wPoly(xc);
+    box(K.poly, x0 - 0.075, y, z0, x1 + 0.075, y + 0.003, z1, w, fOut);
+    box(K.tape, x1 - 0.03, y + 0.0035, z0, x1 + 0.03, y + 0.0045, z1, (x, yy, z) => w(x, yy, z) + 0.04, fOut);
+    const n = Math.max(1, Math.round((z1 - z0) / 0.4));
+    for (let i = 0; i < n; i++) {
+      const za = z0 + ((z1 - z0) * i) / n, zb = z0 + ((z1 - z0) * (i + 1)) / n, r = 0.035 + 0.085 * (1 - i / n);
+      frustum(K.roll, [x0 + 0.04, y + r, zb + r], [x1 - 0.04, y + r, zb + r], r, r, w(0, 0, za), w(0, 0, zb), 10, true);
+    }
+  }
+  // ---- 3. malla electrosoldada 6x6-10/10: alambre de 4 mm cada 15 cm en los dos sentidos, sobre calzas de concreto cada 90 cm
+  const wMesh = (x, y, z) => 4.52 + 1.38 * Fhat(x, z);
+  const from = (a, s) => Math.ceil((a + 0.03) / s) * s;
+  for (const p of firmes) for (const [x0, z0, x1, z1] of orthoStrips(p, 0)) {
+    for (let z = from(z0, 0.15); z < z1 - 0.03; z += 0.15) box(K.mesh, x0 + 0.02, -0.052, z - 0.002, x1 - 0.02, -0.048, z + 0.002, wMesh, fOut);
+    for (let x = from(x0, 0.15); x < x1 - 0.03; x += 0.15) box(K.mesh, x - 0.002, -0.048, z0 + 0.02, x + 0.002, -0.044, z1 - 0.02, wMesh, fOut);
+    for (let x = from(x0, 0.9); x < x1 - 0.05; x += 0.9) for (let z = from(z0, 0.9); z < z1 - 0.05; z += 0.9) box(K.calza, x - 0.025, -0.0895, z - 0.025, x + 0.025, -0.0525, z + 0.025, (a, b, c) => wMesh(a, b, c) - 0.02, fOut);
+  }
+  // ---- poliducto naranja de 3/4": del tablero (muro de la cochera junto al vestíbulo) al comedor, a la isla de la cocina y al estudio; las puntas suben 30 cm
+  const P3 = (x, y, h) => [x - CX, h, y - CZ];
+  const wDuct = (x, y, z) => 4.6 + 1.4 * Fhat(x, z);
+  for (const line of [
+    [[7.15, 14.05], [7.15, 12.9], [6.3, 12.9], [6.3, 11.2], [1.62, 11.2]],
+    [[7.25, 14.05], [7.25, 9.2], [9.6, 6.85], [9.6, 5.7]],
+    [[7.35, 14.05], [7.35, 14.6], [5.2, 14.6], [1.62, 14.6]],
+  ]) {
+    for (let i = 0; i < line.length - 1; i++) frustum(K.duct, P3(...line[i], -0.03), P3(...line[i + 1], -0.03), 0.011, 0.011, wDuct, fOut, 6, false);
+    for (const q of [line[0], line[line.length - 1]]) frustum(K.duct, P3(...q, -0.03), P3(...q, 0.30), 0.011, 0.011, wDuct, 24.6, 6, true);
+  }
+  // ---- 1. drenaje: tubos de PVC en el fondo de la zanja, con campana en cada unión, tubos que suben con tapón y registros de 60 x 60
+  const wTubo = (x, y, z) => DREN.tubo(Fhat(x, z));
+  for (const [x0, y0, x1, y1, r] of DREN.lines) {
+    const h = DREN.yFondo + r + 0.004, len = Math.hypot(x1 - x0, y1 - y0), n = Math.max(1, Math.round(len / 3));
+    frustum(K.pvc, P3(x0, y0, h), P3(x1, y1, h), r, r, wTubo, 6.4, 12, true);
+    for (let i = 0; i <= n; i++) {   // campanas: una cada tramo de 3 m y en los extremos
+      const t = i / n, x = x0 + (x1 - x0) * t, y = y0 + (y1 - y0) * t, dx = ((x1 - x0) / len) * 0.07, dy = ((y1 - y0) / len) * 0.07;
+      frustum(K.pvc, P3(x - dx, y - dy, h), P3(x + dx, y + dy, h), r + 0.009, r + 0.009, wTubo, 6.4, 12, true);
+    }
+  }
+  for (const [x, y, r] of DREN.stubs) {
+    const h = DREN.yFondo + r + 0.004, w = DREN.tubo(Fhat(x - CX, y - CZ)) + 0.03;
+    frustum(K.pvc, P3(x, y, h), P3(x, y, 0.30), r, r, w, 24.6, 12, false);
+    frustum(K.pvc, P3(x, y, 0.27), P3(x, y, 0.315), r + 0.008, r + 0.008, w, 24.6, 12, true);   // tapón
+  }
+  for (const [x, y] of DREN.reg) {
+    const [cx, , cz] = P3(x, y, 0), w = DREN.tubo(Fhat(cx, cz)) - 0.03, a = 0.30, t = 0.08, y0 = DREN.yFondo - 0.01, y1 = -0.004;
+    box(K.reg, cx - a, y0, cz - a, cx - a + t, y1, cz + a, w, 0); box(K.reg, cx + a - t, y0, cz - a, cx + a, y1, cz + a, w, 0);
+    box(K.reg, cx - a + t, y0, cz - a, cx + a - t, y1, cz - a + t, w, 0); box(K.reg, cx - a + t, y0, cz + a - t, cx + a - t, y1, cz + a, w, 0);
+    box(K.steel, cx - 0.26, 0.005, cz - 0.26, cx + 0.26, 0.016, cz + 0.26, 28.7, 0);   // tapa definitiva, con el piso de la cochera
+  }
+  // ---- 4. fronteras del firme: tabla de 2.5 x 5 cm por fuera del borde (solo donde afuera no hay más firme) y estacas cada 1.2 m
+  const onFirme = (x, z) => firmes.some((p) => inPoly(x, z, p.outer) && !p.holes.some((h) => inPoly(x, z, h)));
+  const wFr = (x, y, z) => 4.5 + 1.38 * Fhat(x, z), oFr = (x, y, z) => FIRME(x, z) + 0.5;
+  for (const p of firmes) for (const poly of [p.outer, ...p.holes]) for (let i = 0; i < poly.length; i++) {
+    const [ax, az] = poly[i], [bx, bz] = poly[(i + 1) % poly.length], len = Math.hypot(bx - ax, bz - az), n = Math.max(1, Math.round(len / 0.6));
+    const ux = (bx - ax) / len, uz = (bz - az) / len;
+    for (let k = 0; k < n; k++) {
+      const t0 = k / n, t1 = (k + 1) / n, mx = ax + (bx - ax) * (t0 + t1) / 2, mz = az + (bz - az) * (t0 + t1) / 2;
+      // el lado de afuera es el que no cae en ningún firme
+      const sg = [1, -1].find((g) => !onFirme(mx - uz * 0.06 * g, mz + ux * 0.06 * g) && onFirme(mx + uz * 0.06 * g, mz - ux * 0.06 * g));
+      if (!sg) continue;
+      const nx = -uz * sg, nz = ux * sg;
+      // caja entre dos distancias al borde (d0, d1), a lo largo del tramo
+      const slab = (d0, d1, u0, u1) => {
+        const xa = ax + (bx - ax) * u0, za = az + (bz - az) * u0, xb = ax + (bx - ax) * u1, zb = az + (bz - az) * u1;
+        const X = [xa + nx * d0, xa + nx * d1, xb + nx * d0, xb + nx * d1], Z = [za + nz * d0, za + nz * d1, zb + nz * d0, zb + nz * d1];
+        return [Math.min(...X), Math.min(...Z), Math.max(...X), Math.max(...Z)];
+      };
+      const b = slab(0.006, 0.031, t0, t1); box(K.timber, b[0], -0.036, b[1], b[2], 0.014, b[3], wFr, oFr);
+      if (k % 2 === 0) { const tm = (t0 + t1) / 2, dt = 0.02 / len, e = slab(0.033, 0.073, tm - dt, tm + dt); box(K.timber, e[0], -0.03, e[1], e[2], 0.11, e[3], wFr, oFr); }
+    }
+  }
+  mk(K.poly, R.poly, false); mk(K.tape, R.blinding, false); mk(K.roll, R.poly, true); mk(K.mesh, R.galv, false); mk(K.calza, R.blinding, false);
+  mk(K.duct, R.cap, false); mk(K.pvc, R.pvc, true); mk(K.reg, R.block, true); mk(K.timber, R.timber, false); mk(K.steel, R.steel, false);
+}
+
 // ---------------------------------------------------------------- build it
 export async function buildWorld(o, step) {
   const tick = async (p) => { if (step) await step(p); };
@@ -1427,6 +1339,7 @@ export async function buildWorld(o, step) {
   ctx.samples = o.samples || [];
   foundationKit(group, R, ctx.samples, ctx.obra);
   cisternKit(group, R);
+  firmeKit(group, R);
   await tick(0.2);
 
   // obra falsa: puntales y cimbra
@@ -1442,15 +1355,6 @@ export async function buildWorld(o, step) {
   // el terreno plano, con cepas
   for (const m of buildLand(o, R)) group.add(m);
 
-  await tick(0.55);
-  // la retroexcavadora en la calle, con la pluma hacia el lote
-  {
-    const ex = excavatorGeo({ tip: V(5.35, 3.55, 0.12), wrist: V(5.85, 1.05, 0.12), bucket: -2.25 });
-    const exg = new THREE.Group();
-    for (const k in ex) { stamp(ex[k], 0.3, 2.3); addMesh(exg, ex[k], realOnly(R[k]), { glass: k === 'cabGlass', shadow: k !== 'cabGlass' }); }
-    exg.position.set(9.5 - CX, 0, 23 - CZ); exg.rotation.y = Math.PI / 2; group.add(exg);
-  }
-
   await tick(0.7);
   // montón de tierra fuera del lote, al poniente de la calle
   {
@@ -1463,7 +1367,6 @@ export async function buildWorld(o, step) {
     const m = addMesh(group, g, realOnly(R.soil)); m.castShadow = true;
   }
 
-  group.add(...fence(R));
   await tick(0.82);
 
   // luz de relleno bajo la losa de la cochera (sin sombras), para que no quede negra
@@ -1511,6 +1414,19 @@ export async function buildWorld(o, step) {
 // de altura {y, a, b, m}: de la semana a a la b está a la altura y. Entre celdas vecinas con alturas distintas se levantan caras
 // verticales. Para el dibujo se hace otra copia en que el relleno llega más tarde, para que la lámina 01 (semana 5) siga mostrando las cepas.
 const INF = 1e9;
+// drenaje sanitario bajo el firme, en PLANO: colector de 4" pegado al muro oriente (corre por dentro de su cepa, sobre la zapata) hasta la calle,
+// ramales de la cocina, el lavado, el medio baño y el baño del estudio, bajadas de los baños de planta alta y dos registros en la cochera.
+// lines [x0, y0, x1, y1, radio]; stubs [x, y, radio] (tubo que sube 30 cm sobre el firme con tapón); reg [x, y] (registro de 60 x 60)
+const DREN = {
+  lines: [[11.75, 1.0, 11.75, 19.9, 0.055], [9.9, 5.36, 11.75, 5.36, 0.03], [10.4, 7.67, 11.75, 7.67, 0.03], [9.9, 12.8, 12.1, 12.8, 0.055],
+    [2.25, 17.4, 2.25, 19.0, 0.055], [2.25, 19.0, 11.75, 19.0, 0.055], [11.75, 1.0, 12.1, 1.0, 0.055], [11.75, 17.0, 12.1, 17.0, 0.055]],
+  stubs: [[9.9, 5.36, 0.03], [10.4, 7.67, 0.03], [9.9, 12.8, 0.055], [2.25, 17.4, 0.055], [12.1, 1.0, 0.055], [12.1, 12.8, 0.055], [12.1, 17.0, 0.055]],
+  reg: [[11.75, 14.9], [11.75, 19.0]],
+  yFondo: -0.55,                                    // fondo de zanja = primera capa de relleno de las cepas
+  zanja: (F) => 3.62 + 1.2 * F, tubo: (F) => 4.02 + 1.2 * F, tapa: (F) => 4.26 + 1.2 * F,   // semanas: se abre la zanja, llega el tubo, se tapa
+};
+// zanjas de 40 cm en mundo [x0, z0, x1, z1]
+const ZANJAS = DREN.lines.map(([x0, y0, x1, y1]) => [Math.min(x0, x1) - 0.2 - CX, Math.min(y0, y1) - 0.2 - CZ, Math.max(x0, x1) + 0.2 - CX, Math.max(y0, y1) + 0.2 - CZ]);
 // polígono ortogonal ampliado d metros hacia afuera (esquinas a inglete)
 function growPoly(poly, d) {
   let a = 0;
@@ -1538,8 +1454,8 @@ function buildLand(o, R) {
   // fosa de la cisterna y su "dentro" (muros exteriores reducidos 2 cm), en mundo
   const fosa = [CIS.fosa[0] - CX, CIS.fosa[1] - CZ, CIS.fosa[2] - CX, CIS.fosa[3] - CZ], dentro = [CIS.dentro[0] - CX, CIS.dentro[1] - CZ, CIS.dentro[2] - CX, CIS.dentro[3] - CZ];
   const inR = (r, x, z) => x > r[0] && x < r[2] && z > r[1] && z < r[3];
-  const xs = gridLines(X0, X1, step, [...runs.flatMap((r) => [r.cepa[0], r.cepa[2]]), ...huellas.flatMap((h) => h.map((q) => q[0])), fosa[0], fosa[2], dentro[0], dentro[2]]);
-  const zs = gridLines(Z0, Z1, step, [...runs.flatMap((r) => [r.cepa[1], r.cepa[3]]), ...huellas.flatMap((h) => h.map((q) => q[1])), fosa[1], fosa[3], dentro[1], dentro[3]]);
+  const xs = gridLines(X0, X1, step, [...runs.flatMap((r) => [r.cepa[0], r.cepa[2]]), ...huellas.flatMap((h) => h.map((q) => q[0])), fosa[0], fosa[2], dentro[0], dentro[2], ...ZANJAS.flatMap((r) => [r[0], r[2]])]);
+  const zs = gridLines(Z0, Z1, step, [...runs.flatMap((r) => [r.cepa[1], r.cepa[3]]), ...huellas.flatMap((h) => h.map((q) => q[1])), fosa[1], fosa[3], dentro[1], dentro[3], ...ZANJAS.flatMap((r) => [r[1], r[3]])]);
   const nx = xs.length - 1, nz = zs.length - 1;
   // datos fijos de cada celda (por su centro, que es exacto: ninguna celda cruza un borde)
   const cells = [];
@@ -1548,7 +1464,7 @@ function buildLand(o, R) {
     for (let i = 0; i < nx; i++) {
       const cx = (xs[i] + xs[i + 1]) / 2;
       const hu = huellas.some((h) => inPoly(cx, cz, h)), ce = runs.filter((r) => cx >= r.cepa[0] && cx <= r.cepa[2] && cz >= r.cepa[1] && cz <= r.cepa[3]);
-      row.push({ hu, ce, pit: inR(dentro, cx, cz) ? 2 : inR(fosa, cx, cz) ? 1 : 0, F: Fhat(cx, cz), W: ce.length ? Math.min(...ce.map((r) => runW(r, cx, cz))) : 0 });
+      row.push({ hu, ce, zj: ZANJAS.some((r) => inR(r, cx, cz)), pit: inR(dentro, cx, cz) ? 2 : inR(fosa, cx, cz) ? 1 : 0, F: Fhat(cx, cz), W: ce.length ? Math.min(...ce.map((r) => runW(r, cx, cz))) : 0 });
     }
     cells.push(row);
   }
@@ -1560,12 +1476,14 @@ function buildLand(o, R) {
       if (c.pit === 1) p.push([-1.45, 'fill', 4.0 + shift], [-0.75, 'fill', 4.3 + shift], [-0.20, 'fill', 4.6 + shift], [-0.10, 'fill', Math.max(4.8, 4.0 + 1.2 * F) + shift]);
       return p.map(([y, m, a], i) => ({ y, m, a, b: i + 1 < p.length ? p[i + 1][2] : INF }));
     }
-    if (!hu && !ce.length) return [{ y: 0, a: -2, b: INF, m: 'dry' }];
+    const zj = c.zj && !shift;   // la zanja del drenaje solo en la obra: el dibujo no la lleva
+    if (!hu && !ce.length && !zj) return [{ y: 0, a: -2, b: INF, m: 'dry' }];
     const D = 0.55 + 0.5 * F;
     let st;
-    if (!ce.length) st = [[0, 'dry', -2], [-0.20, 'soil', D], [-0.10, 'fill', 4.0 + 1.2 * F + shift]];
+    if (!ce.length && !hu) st = [[0, 'dry', -2], [DREN.yFondo, 'clay', DREN.zanja(F)], [0, 'soil', DREN.tapa(F)]];
+    else if (!ce.length) st = zj ? [[0, 'dry', -2], [-0.20, 'soil', D], [DREN.yFondo, 'clay', DREN.zanja(F)], [-0.10, 'fill', DREN.tapa(F)]] : [[0, 'dry', -2], [-0.20, 'soil', D], [-0.10, 'fill', 4.0 + 1.2 * F + shift]];
     else {
-      const E1 = 0.75 + W, E2 = E1 + 0.15, R1 = 3.75 + W + shift, R2 = 4.0 + W + shift;
+      const E1 = 0.75 + W, E2 = E1 + 0.15, R1 = 3.75 + W + shift, R2 = zj ? Math.max(4.0 + W, DREN.tapa(F)) : 4.0 + W + shift;   // donde pasa el tubo, la segunda capa espera
       const bardas = ce.every((r) => r.tipo === 'barda'), yF = Math.min(...ce.map((r) => r.yFondo));
       st = [[0, 'dry', -2]];
       if (hu && D < E1) st.push([-0.20, 'soil', D]);
@@ -1686,38 +1604,4 @@ function heapH(x, z) {
   const d = Math.hypot((x - HEAP[0]) * 1.0, (z - HEAP[1]) * 1.25) / HEAP[2];
   if (d >= 1) return 0;
   const k = Math.cos(d * Math.PI / 2); return HEAP[3] * k * k * (1 + 0.12 * (noise2(x * 1.3, z * 1.3) - 0.5)) * Math.min(1, (1 - d) * 6);
-}
-
-// el tapial de la calle: paneles de malla sobre pies de concreto, con un claro frente a la cochera
-function fence(R) {
-  const frame = [], wire = [], feet = [];
-  const panel = (ax, az, bx, bz) => {
-    const len = Math.hypot(bx - ax, bz - az), ang = Math.atan2(bz - az, bx - ax);
-    const q = new THREE.PlaneGeometry(len - 0.08, 1.9); q.translate(len / 2, 1.05, 0); q.rotateY(-ang); q.translate(ax, 0, az);
-    const uv = q.attributes.uv;
-    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * len / 0.5, uv.getY(i) * 1.9 / 1.0);
-    wire.push(q);
-    for (const t of [0.01, 0.99]) {
-      const x = ax + (bx - ax) * t, z = az + (bz - az) * t;
-      const c = new THREE.CylinderGeometry(0.022, 0.022, 2.0, 6); c.translate(x, 1.05, z); frame.push(c);
-      const f = new THREE.BoxGeometry(0.62, 0.14, 0.2); f.rotateY(-ang + Math.PI / 2); f.translate(x, 0.07, z); feet.push(f);
-    }
-    for (const h of [0.08, 2.0]) { const r = new THREE.CylinderGeometry(0.02, 0.02, len, 6); r.rotateZ(Math.PI / 2); r.translate(len / 2, h, 0); r.rotateY(-ang); r.translate(ax, 0, az); frame.push(r); }
-  };
-  const edge = (ax, az, bx, bz, gap) => {
-    const len = Math.hypot(bx - ax, bz - az), n = Math.round(len / 3.45);
-    for (let i = 0; i < n; i++) {
-      const t0 = i / n, t1 = (i + 1) / n, mx = ax + (bx - ax) * (t0 + t1) / 2, mz = az + (bz - az) * (t0 + t1) / 2;
-      if (gap && gap(mx, mz)) continue;
-      panel(ax + (bx - ax) * t0, az + (bz - az) * t0, ax + (bx - ax) * t1, az + (bz - az) * t1);
-    }
-  };
-  const zf = 20.9 - CZ, gx = 9.755 - CX;   // sobre y = 20.9 del plano; el claro es el de la cochera
-  edge(-9.5, zf, 9.5, zf, (x) => Math.abs(x - gx) < 2.9);
-  const out = [];
-  for (const [list, m] of [[frame, R.galv], [wire, R.wire], [feet, R.block]]) {
-    const g = merge(list); stamp(g, 0.2, 33.0);
-    const mesh = new THREE.Mesh(g, m); mesh.userData.sets = { main: m, paper: null, nd: null }; mesh.castShadow = true; mesh.receiveShadow = true; mesh.customDepthMaterial = DEPTH_WEEKLY; out.push(mesh);
-  }
-  return out;
 }

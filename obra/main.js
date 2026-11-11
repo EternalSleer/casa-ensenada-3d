@@ -1,8 +1,9 @@
 // Basado en flat-to-3d/04-build-time-lapse de Sam Aing (MIT), ver LICENSE-flat-to-3d.txt.
 // Secuencia de obra: un scroll por cuarenta semanas.
 // El cargador es el programa escribiéndose. La hoja se dibuja semana a semana (los seis dibujos a la vez, cada uno hasta su semana).
-// El scroll se zambulle en el dibujo 01 hasta la calle frente a las cepas y luego recorre la obra mientras la casa sube:
-// piso por piso: la cimentación desde la calle, los muros de block de planta baja pegados hilada por hilada, la cimbra y el armado de la losa 2.80,
+// El scroll se zambulle en el dibujo 01 hasta la calle frente al terreno todavía vacío (la obra no arranca hasta que el terreno terminó de
+// dibujarse) y luego recorre la obra mientras la casa sube, piso por piso: la cimentación paso a paso rodeando el lote (trazo, cepas, plantilla,
+// acero, zapatas, contratrabes, impermeabilizante, relleno, drenaje, plástico, malla y firme), los muros de block de planta baja pegados hilada por hilada, la cimbra y el armado de la losa 2.80,
 // los muros de planta alta, el bosque de puntales de la sala de doble altura, la terraza y la azotea desde arriba, los aplanados, el jardín y la cocina,
 // y llega a la entrega en la semana 40; después se aleja hasta que la casa vuelve a ser el dibujo 06.
 //   ?v=12.5  salta a una posición del scroll, en alturas de pantalla      ?still   se salta el cargador y el dibujo, para fotos
@@ -81,7 +82,7 @@ setP(0.48); await raf();
 
 // ---------------------------------------------------------------- cámaras: llaves [pantallas, ojo (x, altura, y), mira (x, altura, y)] en coordenadas del plano
 const cam = new THREE.PerspectiveCamera(2, 1, 1, 2000);
-const EYE_FOV = PHONE ? 64 : 50;
+const EYE_FOV = PHONE ? 74 : 66;   // lente abierta: en cada cuarto se ve el cuarto, no un pedazo de muro
 const PL = (x, h, y) => V(x - CX, h, y - CZ);   // plano [x, altura, y] -> mundo
 // la axonometría de la hoja: centrada en la casa entera (de -0.95 a 8.20 m) para que las láminas 04–06 no se recorten
 const K0 = { T: PL(6.245, 3.4, 10.3), az: 128, el: 33.5, h: 11.5, fov: 2 };
@@ -101,9 +102,15 @@ const lerpK = (a, b, t, o = {}) => {
 // guion de la cámara por tramos de llaves [v, ojo x, ojo altura, ojo y, mira x, mira altura, mira y]; cada tramo arranca en la última llave del anterior
 const DIVE = 6; // la zambullida ocupa las primeras seis alturas de pantalla
 const TRAMOS = [
-  // A (v 6.0–9.6, sem 4.1→6.4) cimentación: de la calle por el andador hasta el vano de la puerta principal (contratrabes, anclas, relleno, firme)
-  [[6.0, 6.40, 1.62, 25.0, 6.30, -0.4, 15.5], [7.0, 6.55, 1.62, 22.4, 3.2, -0.6, 17.4], [7.9, 6.60, 1.62, 20.3, 9.6, -0.3, 16.6],
-    [8.8, 6.40, 1.64, 17.6, 4.2, 0.0, 14.6], [9.6, 6.40, 1.65, 14.8, 6.0, 0.6, 10.0]],
+  // A (v 6.0–17.0, sem 0→6.4) cimentación completa, por fuera y por encima del lote, a 4–6.5 m de altura para ver el lote entero: de la calle (trazo con cal, niveletas e hilos) al poniente
+  // (despalme, cepas, plantilla), al jardín (acero, fronteras y colado de zapatas; cimbra y colado de contratrabes), y de regreso por el centro hacia
+  // la calle siguiendo el frente del firme (impermeabilizante, relleno, drenaje, plástico, malla, cisterna) hasta el vano de la puerta principal
+  [[6.0, 6.40, 1.62, 25.0, 6.30, -0.4, 15.5], [6.8, 5.00, 3.60, 25.5, 6.0, -0.3, 12.0], [7.6, 0.50, 5.50, 24.0, 6.2, -0.5, 11.0],
+    [8.5, -4.50, 6.50, 17.0, 6.3, -0.8, 10.0], [9.4, -4.50, 6.00, 7.0, 6.3, -0.9, 8.5], [10.3, -2.00, 5.50, -2.5, 6.5, -0.9, 8.0],
+    [11.2, 5.00, 5.00, -3.5, 7.5, -0.7, 8.5], [12.0, 6.40, 4.60, 1.0, 6.6, -0.4, 11.0], [12.8, 6.30, 4.40, 1.5, 6.3, -0.3, 9.0],
+    [13.6, 5.00, 4.00, 6.0, 10.5, -0.5, 8.0], [14.4, 3.00, 4.00, 12.5, 7.0, -0.2, 6.5], [15.2, 4.00, 3.60, 16.5, 8.0, -0.2, 12.5],
+    [15.9, 6.45, 2.40, 19.5, 7.5, -0.2, 14.5], [16.2, 6.40, 1.64, 17.6, 4.2, 0.0, 14.6], [17.0, 6.40, 1.65, 14.8, 6.0, 0.6, 10.0]],
+  // De aquí en adelante las v escritas son las de antes de alargar la cimentación: abajo se les suma SH (7.4) a todas.
   // B (→19.0, sem 6.4→10.6) muros PB: entra por el vano principal cuando el muro aún no arranca; acercamiento al muro y = 11.82 mientras se pega el block;
   // del vestíbulo entra al estudio por su puerta (x 5.79) a ver subir el muro de la ventana; luego sala y cocina
   [[10.5, 6.38, 1.65, 12.6, 3.5, 1.0, 7.0], [11.4, 5.70, 1.55, 10.4, 4.6, 0.8, 11.82], [12.6, 4.60, 1.45, 10.5, 3.6, 0.9, 11.82],
@@ -136,13 +143,15 @@ const TRAMOS = [
     [51.1, 4.50, 5.40, 1.8, 4.6, 2.6, 6.0], [51.7, 6.00, 1.70, 1.6, 4.4, 1.5, 6.0], [52.3, 8.50, 1.70, 2.6, 9.6, 1.1, 5.4], [52.7, 8.30, 1.75, 4.15, 9.9, 0.9, 5.4],
     [53.3, 7.25, 1.70, 4.25, 2.0, 1.5, 7.8], [53.6, 7.20, 1.70, 8.1, 2.2, 1.5, 4.2]],
 ];
+const SH = 7.4;   // lo que se alargó el tramo A
+for (const t of TRAMOS.slice(1)) for (const k of t) k[0] += SH;
 const LEGS = TRAMOS.map((t, i) => ({ keys: i ? [TRAMOS[i - 1][TRAMOS[i - 1].length - 1], ...t] : t }));
 for (const leg of LEGS) {
   const P = leg.keys.map((k) => PL(k[1], k[2], k[3])), L = leg.keys.map((k) => PL(k[4], k[5], k[6]));
   leg.pos = new THREE.CatmullRomCurve3(P, false, 'centripetal'); leg.look = new THREE.CatmullRomCurve3(L, false, 'centripetal');
   leg.v0 = leg.keys[0][0]; leg.v1 = leg.keys[leg.keys.length - 1][0];
 }
-LEGS[1].even = LEGS[4].even = true;   // B (planta baja con el estudio) y E (planta alta cuarto por cuarto)
+LEGS[0].even = LEGS[1].even = LEGS[4].even = true;   // A (cimentación paso a paso), B (planta baja con el estudio) y E (planta alta cuarto por cuarto)
 function walkAt(v) {
   const leg = LEGS.find((l) => v <= l.v1) || LEGS[LEGS.length - 1];
   // el suavizado de entrada y salida es de todo el tramo: en B y E (cuarto por cuarto) casi no se aplica, para que el paso sea parejo
@@ -151,16 +160,18 @@ function walkAt(v) {
   const u = (i + clamp((vv - k[i][0]) / (k[i + 1][0] - k[i][0]), 0, 1)) / (k.length - 1);
   return { P: leg.pos.getPoint(u), L: leg.look.getPoint(u) };
 }
-const V_END = LEGS[LEGS.length - 1].v1;   // 53.6, la entrega
-// la semana en cada punto del scroll. Al terminar la zambullida la obra va en la 4.1: las cepas siguen abiertas frente a la cámara.
-const W_DIVE = 4.1;
+const V_END = LEGS[LEGS.length - 1].v1;   // 61.0, la entrega
+// la semana en cada punto del scroll. La zambullida termina en la semana 0: el terreno vacío. La obra empieza a moverse cuando la cámara ya está en la calle.
+const W_DIVE = 0;
 const WEEK_KEYS = [
-  [6.0, W_DIVE], [7.0, 5.0], [8.8, 6.0], [9.6, 6.4], [10.5, 6.9], [11.4, 7.95], [12.6, 8.4], [13.4, 8.65], [14.0, 8.85], [14.4, 9.0], [14.8, 9.15],
+  [6.0, W_DIVE], [6.8, 0.5], [7.6, 1.05], [8.5, 1.6], [9.4, 2.15], [10.3, 2.65], [11.2, 3.15], [12.0, 3.7], [12.8, 4.2], [13.6, 4.6], [14.4, 5.0], [15.2, 5.45],
+  [15.9, 5.85], [16.2, 6.0], [17.0, 6.4],
+  ...[[10.5, 6.9], [11.4, 7.95], [12.6, 8.4], [13.4, 8.65], [14.0, 8.85], [14.4, 9.0], [14.8, 9.15],
   [15.6, 9.45], [16.4, 9.75], [16.8, 9.88], [17.2, 10.0], [18.0, 10.3], [19.0, 10.6], [19.8, 11.0], [21.0, 11.7], [22.6, 12.4], [24.2, 13.6],
   [25.2, 13.9], [26.0, 14.15], [26.7, 14.35], [27.1, 14.45], [27.5, 14.6], [28.3, 14.9], [29.1, 15.2], [29.9, 15.5], [30.6, 15.75], [31.4, 16.05],
   [32.2, 16.3], [33.0, 16.5], [33.6, 16.65], [34.2, 16.8], [34.8, 16.95], [35.4, 17.1], [36.1, 17.3], [36.8, 17.5], [37.4, 17.6], [38.0, 17.7], [38.8, 17.85],
   [39.6, 18.0], [41.2, 18.6], [42.8, 19.8], [43.6, 20.4], [44.6, 21.0], [45.4, 21.9], [46.4, 23.2], [47.4, 24.2], [48.4, 25.2],
-  [49.2, 26.0], [49.9, 27.0], [50.5, 28.6], [51.1, 30.0], [51.7, 32.5], [52.3, 35.0], [52.7, 36.5], [53.3, 38.8], [53.6, 40.0],
+  [49.2, 26.0], [49.9, 27.0], [50.5, 28.6], [51.1, 30.0], [51.7, 32.5], [52.3, 35.0], [52.7, 36.5], [53.3, 38.8], [53.6, 40.0]].map(([v, w]) => [v + SH, w]),
 ];
 function weekAt(v) {
   if (v <= WEEK_KEYS[0][0]) return WEEK_KEYS[0][1];
@@ -285,7 +296,7 @@ const setOf = (set) => scene.traverse((o) => {
 pipe.draw(TILES.map((t, i) => ({ rect: REST[i], cam: K0, now: t.w1, newFrom: t.w0 })));
 setP(0.78); await raf();
 {
-  const warm = [[WEEKS, KW], [WEEKS, KF], [18, K3], [W_DIVE, K3], [2.5, K3], [2.5, K1]];
+  const warm = [[WEEKS, KW], [WEEKS, KF], [18, K3], [5.2, K3], [2.5, K3], [W_DIVE, K1]];
   for (let i = 0; i < warm.length; i++) {
     const [w, k] = warm[i];
     faceK = k === KF ? 1 : 0; U.real.value = w; lightFor(w); renderer.shadowMap.needsUpdate = true;
@@ -395,14 +406,23 @@ function chipFor(v, week, pour, diving) {
     if (week >= 39.8) return 'Semana 40 &nbsp;//&nbsp; <i>Entrega</i>';
     const n = propsAt(week);
     // la planta según la altura del ojo
-    const P = walkAt(v).P, eye = P.y, floor = (eye < 2.6 ? 'Planta baja' : eye < 5.4 ? 'Planta alta' : 'Terraza') + roomAt(P.x + CX, P.z + CZ, eye);
+    const P = walkAt(v).P, eye = P.y, floor = week < 6.3 ? 'Cimentación' : (eye < 2.6 ? 'Planta baja' : eye < 5.4 ? 'Planta alta' : 'Terraza') + roomAt(P.x + CX, P.z + CZ, eye);
     const pre = wk + (PHONE ? '' : floor + ' &nbsp;//&nbsp; ');
     const B = WORLD.blocksAt ? WORLD.blocksAt(week) : null;   // { pb: [n, N], pa: [n, N], t: [n, N] }
     const pz = (k, txt) => (B && B[k] && B[k][0] > 0 ? `${txt} · ${fmt(B[k][0])} de ${fmt(B[k][1])} piezas` : txt);
     let t;
-    if (week < 4.4) t = 'Contratrabes y anclas de castillo';
-    else if (week < 5.25) t = 'Relleno compactado en capas';
-    else if (week < 5.7) t = 'Cisterna de 5,000 L · armado y colado de la tapa';
+    if (week < 0.55) t = 'Trazo y nivelación · cal, niveletas e hilos';
+    else if (week < 1.2) t = 'Despalme y excavación de cepas · fosa de la cisterna';
+    else if (week < 1.75) t = 'Afine de cepas y plantilla de concreto pobre · 5 cm';
+    else if (week < 2.3) t = 'Acero de zapatas · parrilla y fronteras de madera';
+    else if (week < 2.8) t = 'Colado de zapatas · armado de contratrabes';
+    else if (week < 3.6) t = 'Cimbra y colado de contratrabes · anclas de castillo';
+    else if (week < 4.05) t = 'Descimbrado e impermeabilizante asfáltico';
+    else if (week < 4.45) t = 'Relleno compactado en capas';
+    else if (week < 4.8) t = 'Drenaje sanitario · tubo de PVC en zanja y registros';
+    else if (week < 5.2) t = 'Barrera de vapor · polietileno negro con traslapes';
+    else if (week < 5.6) t = 'Malla electrosoldada 6×6-10/10 · calzas y poliducto';
+    else if (week < 5.9) t = 'Cisterna de 5,000 L · colado de la tapa';
     else if (week < 6.3) t = 'Firme de planta baja · 10 cm';
     else if (week < 10.6) t = pz('pb', 'Muros de block 15 × 20 × 40 · hilada por hilada');
     else if (week < 11.2) t = `Cimbra de losa N.P.T. 2.80${n ? ` · ${n} puntales` : ''}`;
@@ -424,8 +444,7 @@ function chipFor(v, week, pour, diving) {
     else t = 'Sala · doble altura';
     return pre + '<i>' + t + '</i>';
   }
-  if (v > DIVE * 0.93) return 'Semana 05 &nbsp;//&nbsp; <i>Colado de contratrabes</i>';
-  if (pour > 0) { const w = clamp(Math.ceil(pour), 1, 5); return `Semana ${pad(w)} &nbsp;//&nbsp; <i>${w <= 1 ? 'Trazo y excavación · fosa de la cisterna' : w === 2 ? 'Excavación y plantilla' : w === 3 ? 'Armado y colado de zapatas · muros de la cisterna' : 'Cimbra y colado de contratrabes'}</i>`; }
+  if (v > DIVE * 0.93 || pour > 0) return 'Semana 01 &nbsp;//&nbsp; <i>El terreno, antes del trazo</i>';
   if (diving) return 'Dibujo 01 &nbsp;//&nbsp; Excavación y cimentación &nbsp;//&nbsp; <i>Sem 01–05</i>';
   return '';
 }
@@ -464,7 +483,7 @@ function frame(now) {
     z = ease(sm(0.035, 0.24, ps)); c = sm(0.23, 0.40, ps);
     pour = lerp(-0.8, 5.6, clamp((ps - 0.36) / 0.30, 0, 1));
     l = clamp((ps - 0.62) / (0.975 - 0.62), 0, 1);
-    week = sv > DIVE ? weekAt(sv) : clamp(pour - 0.3, 0, W_DIVE);
+    week = sv > DIVE ? weekAt(sv) : W_DIVE;   // mientras el terreno se dibuja, la obra no se mueve
     realOnly = pour >= 5.55;
     k = c > 0 ? lerpK(K0, K1, c) : K0;
     if (l > 0) k = lerpK(K1, K3, l, { f: sm(0, 0.62, l), e: sm(0.22, 1, l), T: sm(0.18, 1, l), h: sm(0.18, 1, l) });
